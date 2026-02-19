@@ -1,4 +1,5 @@
 import { authenticate, unauthenticated } from "../shopify.server";
+import prisma from "../db.server";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -31,7 +32,6 @@ async function handle(request: Request) {
 
   const url = new URL(request.url);
   const liveShop = normalizeShopDomain(env.LIVE_SHOP_DOMAIN);
-  const adminToken = (env.SHOPIFY_ADMIN_TOKEN || env.SHOPIFY_ADMIN_API_ACCESS_TOKEN || "").trim();
   const requestedShop = normalizeShopDomain(url.searchParams.get("shop"));
   const shop = requestedShop || liveShop;
   let proxyVerified = false;
@@ -47,35 +47,38 @@ async function handle(request: Request) {
   }
 
   let admin: any;
-  let via: "offline_session" | "admin_token" = "offline_session";
+  let via: "offline_session" | "session_token" = "offline_session";
   try {
     ({ admin } = await unauthenticated.admin(shop));
   } catch (e: any) {
-    if (adminToken && liveShop && shop === liveShop) {
-      via = "admin_token";
+    const offlineSession = await prisma.session.findFirst({
+      where: { shop, isOnline: false },
+    });
+    const sessionAccessToken = (offlineSession?.accessToken || "").trim();
+
+    if (sessionAccessToken) {
+      via = "session_token";
       admin = {
         graphql: async (query: string, opts: any = {}) =>
           fetch(`https://${shop}/admin/api/2026-01/graphql.json`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-Shopify-Access-Token": adminToken,
+              "X-Shopify-Access-Token": sessionAccessToken,
             },
             body: JSON.stringify({ query, variables: opts?.variables ?? {} }),
           }),
       };
     } else {
-      console.error("[create-discount-live] no offline session and no valid fallback token", {
+      console.error("[create-discount-live] no usable offline session token", {
         shop,
-        hasToken: Boolean(adminToken),
         liveShop,
         detail: String(e?.message ?? e),
       });
       return json(
         {
           ok: false,
-          error:
-            "No offline session for this shop. Open the app once in Shopify Admin to create app session, then retry.",
+          error: "No offline session for this shop. Open the app once in Shopify Admin and reinstall if needed, then retry.",
         },
         { status: 401 }
       );
