@@ -120,7 +120,8 @@ async function handle(request: Request) {
     }
 
     if (!result.ok) {
-      return json({ ok: false, error: "Admin API HTTP error", status: result.status, body: body ?? bodyText }, { status: 502 });
+      const status = result.status >= 400 && result.status < 500 ? result.status : 502;
+      return json({ ok: false, error: "Admin API HTTP error", status: result.status, body: body ?? bodyText }, { status });
     }
 
     const userErrors = body?.data?.discountCodeBasicCreate?.userErrors ?? [];
@@ -131,7 +132,7 @@ async function handle(request: Request) {
     return json({ ok: true, code, via, proxyVerified });
   } catch (e: any) {
     console.error("[create-discount-live] graphql exception:", e?.stack ?? e);
-    return json({ ok: false, error: "Failed to create discount code.", detail: String(e?.message ?? e) }, { status: 500 });
+    return json({ ok: false, error: "Failed to create discount code.", detail: String(e?.message ?? e) }, { status: 502 });
   }
 }
 
