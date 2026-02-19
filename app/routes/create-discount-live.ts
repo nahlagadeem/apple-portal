@@ -1,5 +1,4 @@
 import { authenticate, unauthenticated } from "../shopify.server";
-import prisma from "../db.server";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -27,34 +26,6 @@ function normalizeShopDomain(input: string | null | undefined): string {
   }
 }
 
-async function getCustomerId(request: Request, url: URL): Promise<string> {
-  const fromUrl =
-    url.searchParams.get("logged_in_customer_id") ||
-    url.searchParams.get("customer_id") ||
-    "";
-  if (String(fromUrl).trim()) return String(fromUrl).trim();
-
-  const fromHeader =
-    request.headers.get("x-shopify-customer-id") ||
-    request.headers.get("x-customer-id") ||
-    "";
-  if (String(fromHeader).trim()) return String(fromHeader).trim();
-
-  try {
-    const contentType = request.headers.get("content-type") || "";
-    if (contentType.includes("application/x-www-form-urlencoded")) {
-      const raw = await request.clone().text();
-      const form = new URLSearchParams(raw);
-      const fromBody = form.get("logged_in_customer_id") || form.get("customer_id") || "";
-      if (String(fromBody).trim()) return String(fromBody).trim();
-    }
-  } catch {
-    // Ignore parse issues and fall through to empty string.
-  }
-
-  return "";
-}
-
 async function handle(request: Request) {
   console.log("[create-discount-live] HIT", new Date().toISOString(), request.method, request.url);
 
@@ -67,19 +38,8 @@ async function handle(request: Request) {
 
   const url = new URL(request.url);
   const shop = normalizeShopDomain(url.searchParams.get("shop"));
-  const customerId = await getCustomerId(request, url);
   if (!shop) {
     return json({ ok: false, error: "Missing shop parameter." }, { status: 400 });
-  }
-  if (!customerId) {
-    return json({ ok: false, error: "Please log in to get your student discount code." }, { status: 401 });
-  }
-
-  const existing = await prisma.studentDiscount.findUnique({
-    where: { shop_customerId: { shop, customerId } },
-  });
-  if (existing?.code) {
-    return json({ ok: true, code: existing.code, reused: true });
   }
 
   let admin: any;
@@ -139,9 +99,7 @@ async function handle(request: Request) {
             title: `Student Discount ${code}`,
             code,
             startsAt: new Date().toISOString(),
-            customerSelection: {
-              customers: { add: [`gid://shopify/Customer/${customerId}`] },
-            },
+            customerSelection: { all: true },
             customerGets: {
               value: { percentage: 0.5 },
               items: { all: true },
@@ -169,28 +127,7 @@ async function handle(request: Request) {
       return json({ ok: false, userErrors }, { status: 400 });
     }
 
-    const discountNodeId = body?.data?.discountCodeBasicCreate?.codeDiscountNode?.id ?? null;
-
-    try {
-      await prisma.studentDiscount.create({
-        data: {
-          shop,
-          customerId,
-          code,
-          discountNodeId,
-        },
-      });
-      return json({ ok: true, code, via, reused: false });
-    } catch (saveErr: any) {
-      // In case of parallel requests, return the first persisted code.
-      const found = await prisma.studentDiscount.findUnique({
-        where: { shop_customerId: { shop, customerId } },
-      });
-      if (found?.code) {
-        return json({ ok: true, code: found.code, reused: true });
-      }
-      throw saveErr;
-    }
+    return json({ ok: true, code, via });
   } catch (e: any) {
     console.error("[create-discount-live] graphql exception:", e?.stack ?? e);
     return json({ ok: false, error: "Failed to create discount code.", detail: String(e?.message ?? e) }, { status: 500 });
@@ -204,3 +141,4 @@ export async function loader({ request }: { request: Request }) {
 export async function action({ request }: { request: Request }) {
   return handle(request);
 }
+
