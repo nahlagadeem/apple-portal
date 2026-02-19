@@ -27,12 +27,32 @@ function normalizeShopDomain(input: string | null | undefined): string {
   }
 }
 
-function getCustomerId(url: URL): string {
-  const raw =
+async function getCustomerId(request: Request, url: URL): Promise<string> {
+  const fromUrl =
     url.searchParams.get("logged_in_customer_id") ||
     url.searchParams.get("customer_id") ||
     "";
-  return String(raw).trim();
+  if (String(fromUrl).trim()) return String(fromUrl).trim();
+
+  const fromHeader =
+    request.headers.get("x-shopify-customer-id") ||
+    request.headers.get("x-customer-id") ||
+    "";
+  if (String(fromHeader).trim()) return String(fromHeader).trim();
+
+  try {
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType.includes("application/x-www-form-urlencoded")) {
+      const raw = await request.clone().text();
+      const form = new URLSearchParams(raw);
+      const fromBody = form.get("logged_in_customer_id") || form.get("customer_id") || "";
+      if (String(fromBody).trim()) return String(fromBody).trim();
+    }
+  } catch {
+    // Ignore parse issues and fall through to empty string.
+  }
+
+  return "";
 }
 
 async function handle(request: Request) {
@@ -47,7 +67,7 @@ async function handle(request: Request) {
 
   const url = new URL(request.url);
   const shop = normalizeShopDomain(url.searchParams.get("shop"));
-  const customerId = getCustomerId(url);
+  const customerId = await getCustomerId(request, url);
   if (!shop) {
     return json({ ok: false, error: "Missing shop parameter." }, { status: 400 });
   }
