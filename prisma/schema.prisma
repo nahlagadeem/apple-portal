@@ -32,3 +32,15 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model StudentDiscount {
+  id             Int      @id @default(autoincrement())
+  shop           String
+  customerId     String
+  code           String
+  discountNodeId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([shop, customerId])
+}
