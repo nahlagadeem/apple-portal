@@ -1,12 +1,12 @@
 -- CreateTable
 CREATE TABLE "StudentDiscount" (
-    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "id" SERIAL NOT NULL PRIMARY KEY,
     "shop" TEXT NOT NULL,
     "customerId" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "discountNodeId" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
 );
 
 -- CreateIndex
