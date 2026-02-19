@@ -32,5 +32,5 @@ redirect_urls = [
 
 [app_proxy]
 url = "https://apple-portal.onrender.com"
-subpath = "proxy"
+subpath = "student-discount"
 prefix = "apps"
