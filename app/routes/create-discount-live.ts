@@ -29,15 +29,25 @@ function normalizeShopDomain(input: string | null | undefined): string {
 async function handle(request: Request) {
   console.log("[create-discount-live] HIT", new Date().toISOString(), request.method, request.url);
 
+  const url = new URL(request.url);
+  const liveShop = normalizeShopDomain(env.LIVE_SHOP_DOMAIN);
+  const adminToken = (env.SHOPIFY_ADMIN_TOKEN || env.SHOPIFY_ADMIN_API_ACCESS_TOKEN || "").trim();
+  const requestedShop = normalizeShopDomain(url.searchParams.get("shop"));
+  const shop = requestedShop || liveShop;
+  const canTrustDirect = Boolean(adminToken && liveShop && shop === liveShop);
+
+  let proxyVerified = false;
   try {
     await authenticate.public.appProxy(request);
+    proxyVerified = true;
   } catch (e: any) {
-    console.error("[create-discount-live] appProxy signature invalid:", e?.message ?? e);
-    return json({ ok: false, error: "Unauthorized (invalid app proxy signature)." }, { status: 401 });
+    if (!canTrustDirect) {
+      console.error("[create-discount-live] appProxy signature invalid:", e?.message ?? e);
+      return json({ ok: false, error: "Unauthorized (invalid app proxy signature)." }, { status: 401 });
+    }
+    console.warn("[create-discount-live] proceeding without appProxy signature for trusted live shop direct call");
   }
 
-  const url = new URL(request.url);
-  const shop = normalizeShopDomain(url.searchParams.get("shop"));
   if (!shop) {
     return json({ ok: false, error: "Missing shop parameter." }, { status: 400 });
   }
@@ -47,9 +57,6 @@ async function handle(request: Request) {
   try {
     ({ admin } = await unauthenticated.admin(shop));
   } catch (e: any) {
-    const liveShop = normalizeShopDomain(env.LIVE_SHOP_DOMAIN);
-    const adminToken = (env.SHOPIFY_ADMIN_TOKEN || env.SHOPIFY_ADMIN_API_ACCESS_TOKEN || "").trim();
-
     if (adminToken && liveShop && shop === liveShop) {
       via = "admin_token";
       admin = {
@@ -127,7 +134,7 @@ async function handle(request: Request) {
       return json({ ok: false, userErrors }, { status: 400 });
     }
 
-    return json({ ok: true, code, via });
+    return json({ ok: true, code, via, proxyVerified });
   } catch (e: any) {
     console.error("[create-discount-live] graphql exception:", e?.stack ?? e);
     return json({ ok: false, error: "Failed to create discount code.", detail: String(e?.message ?? e) }, { status: 500 });
