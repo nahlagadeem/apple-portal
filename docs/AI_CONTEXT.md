@@ -72,3 +72,36 @@ select id, shop, code, "createdAt" from "StudentDiscount" order by "createdAt" d
   - `/proxy/ping`
   - `/create-discount?shop=7shdka-4d.myshopify.com`
 - Do not reintroduce per-customer persistence logic unless explicitly requested.
+
+## Current Blocking Issue (Per-user persistent discount code)
+
+### Desired behavior
+- Each logged-in customer should get exactly ONE discount code the first time they open the discount page.
+- On every later visit, the same customer must see the same previously created code (no new code per visit).
+- Different customers must get different codes.
+- If customer is not logged in, do not create a code; show login CTA.
+
+### Identity + persistence rules
+- "Per user" means per Shopify Customer ID (customer.id) scoped by shop:
+  - Key = (shop, customerId)
+  - Value = discountCode (+ createdAt, etc.) stored in Postgres (StudentDiscount table).
+
+### App Proxy requirement (no fake tokens)
+- Do NOT require or introduce a manual SHOPIFY_ADMIN_TOKEN for production.
+- Admin API calls MUST use app OAuth access tokens obtained via Shopify sessions:
+  1) Try unauthenticated.admin(shop) first.
+  2) Fallback to offline session token stored in Prisma Session table.
+- If no offline session exists for the shop, the correct fix is:
+  - open/reinstall the app in the target shop’s Shopify Admin to generate/store the offline session token
+  - NOT adding any "admin token" env var.
+
+### How customerId reaches backend
+- App Proxy request should include customerId when customer is logged-in:
+  - Theme/Liquid should pass customerId={{ customer.id }} to the proxy endpoint.
+- Backend must verify App Proxy signature before trusting query params (including customerId).
+
+### Backend logic (Get-or-Create)
+- Endpoint should implement "get-or-create":
+  - If StudentDiscount exists for (shop, customerId) => return stored code.
+  - Else => create discount code via Admin API, store it, then return it.
+- Never respond with generic 500; always return structured JSON errors.
