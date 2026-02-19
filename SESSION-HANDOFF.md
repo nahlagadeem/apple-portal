@@ -1,51 +1,48 @@
-## Session Handoff (2026-02-18)
+## Session Handoff (2026-02-19)
 
-### What is done
-- Live store target: `7shdka-4d.myshopify.com`.
-- Backend discount creation is working against live store.
-- Verified by running:
-  - `npm run test:live-discount`
-  - Result was success with a created discount code and node id.
+### Trigger
+- If user says `tama tama sadiki`, resume this exact project flow immediately.
 
-### Code changes completed
-- `app/routes/proxy.create-discount.ts`
-  - Uses `create-discount-live` route.
-- `app/routes/create-discount.ts`
-  - Re-export to `create-discount-live` so `/apps/proxy/create-discount` hits live-safe handler.
-- `app/routes/create-discount-live.ts`
-  - Uses env fallback token (`LIVE_SHOP_DOMAIN` + `SHOPIFY_ADMIN_TOKEN`) and compiles cleanly.
-- `shopify.app.toml`
-  - App proxy URL typo fixed (single `.trycloudflare.com`).
-- `package.json`
-  - Added script: `test:live-discount`.
-- `scripts/test-live-discount.mjs`
-  - Added end-to-end live discount API test.
-- `.env`
-  - Contains live shop domain and admin token entry.
+### Project
+- Repo: `C:\Windows\System32\student-discount`
+- Branch: `main`
+- Remote: `git@github.com:nahlagadeem/apple-portal.git`
+- Live app: `https://apple-portal.onrender.com`
+- Live shop: `7shdka-4d.myshopify.com`
 
-### Current blocker
-- Storefront button shows "network error" because app proxy points to an old/dead tunnel URL.
-- Need a fresh running tunnel from `shopify app dev`, then update app URLs in Shopify app version config.
+### Current architecture
+- Discount route:
+  - `app/routes/create-discount-live.ts`
+  - `app/routes/create-discount.ts` re-exports live route
+  - `app/routes/proxy.create-discount.ts` re-exports live route
+- Behavior target:
+  - Create a new discount code on each visit
+  - No generic 500 behavior; return structured JSON errors
+- Auth path:
+  - First tries `unauthenticated.admin(shop)`
+  - Fallback uses offline session token from Prisma `Session` table
+  - Does not require `SHOPIFY_ADMIN_TOKEN`
 
-### Resume steps
-1. Open PowerShell:
-   - `cd C:\Windows\System32\student-discount`
-2. Start dev server:
-   - `npm run dev`
-3. Copy the new tunnel URL shown by Shopify CLI.
-4. In Shopify app dashboard/version:
-   - Set `App URL` to new tunnel URL.
-   - Set App Proxy URL to same tunnel URL.
-   - Keep proxy path: `/apps/proxy`.
-   - Release/publish version.
-5. In `sections/student-discount-page.liquid`, keep fetch endpoint:
-   - `fetch('/apps/proxy/create-discount', { method: 'POST' })`
-6. Reload storefront page and click button.
-7. Verify new `STUDENT-...` code appears in Admin -> Discounts.
+### Database state
+- Migrated to Postgres:
+  - `prisma/schema.prisma` uses `provider = "postgresql"` and `DATABASE_URL`
+  - Migrations updated for Postgres SQL compatibility
+- Render now needs `DATABASE_URL` set to Render Postgres internal URL.
 
-### If `npm run dev` times out
-- Run:
-  - `shopify version`
-  - `shopify auth login`
-  - `shopify app dev --verbose`
-- Capture last 20 lines and continue debugging from there.
+### Deployment flow
+- Preferred deployment: push to `main` and let Render auto-deploy.
+- If live output seems old, Render has not completed deployment yet.
+
+### Verification commands
+- Health check:
+  - `curl -i "https://apple-portal.onrender.com/proxy/ping"`
+- Discount route:
+  - `curl -i "https://apple-portal.onrender.com/create-discount?shop=7shdka-4d.myshopify.com"`
+- Postgres table checks (Render psql):
+  - `\dt`
+  - `select count(*) from "Session";`
+  - `select count(*) from "StudentDiscount";`
+
+### Known failure modes
+- If no offline session exists in DB, discount creation returns 401 until app is opened/reinstalled in Shopify Admin.
+- If Render has not deployed latest commit, endpoint responses will reflect old code.
