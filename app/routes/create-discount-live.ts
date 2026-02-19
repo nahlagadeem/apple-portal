@@ -1,5 +1,3 @@
-import { authenticate, unauthenticated } from "../shopify.server";
-
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
@@ -28,75 +26,42 @@ function json(data: unknown, init: ResponseInit = {}) {
 
 async function handle(request: Request) {
   console.log("[create-discount-live] HIT", new Date().toISOString(), request.method, request.url);
-
-  // 1) Ensure it's a SIGNED App Proxy request
-  try {
-    await authenticate.public.appProxy(request);
-  } catch (e: any) {
-    console.error("[create-discount-live] appProxy signature invalid:", e?.message ?? e);
-    return json({ ok: false, error: "Unauthorized (invalid app proxy signature)." }, { status: 401 });
-  }
-
-  // 2) Extract shop
+  // Extract shop and verify it matches configured live shop.
   const url = new URL(request.url);
-  const shop = url.searchParams.get("shop");
-  if (!shop) {
-    return json({ ok: false, error: "Missing shop parameter." }, { status: 400 });
+  const shop = normalizeShopDomain(url.searchParams.get("shop"));
+  const liveShop = normalizeShopDomain(env.LIVE_SHOP_DOMAIN);
+  const adminToken = (env.SHOPIFY_ADMIN_TOKEN || env.SHOPIFY_ADMIN_API_ACCESS_TOKEN || "").trim();
+
+  if (!adminToken) {
+    return json({ ok: false, error: "Missing SHOPIFY_ADMIN_TOKEN in server environment." }, { status: 500 });
   }
 
-  // 3) Get Admin API client: try offline session, else fallback to custom app Admin token
-  let admin: any;
-  let via: "offline_session" | "admin_token" = "offline_session";
-  try {
-    ({ admin } = await unauthenticated.admin(shop));
-  } catch (e: any) {
-    console.warn("[create-discount-live] offline session not found; trying Admin token fallback");
+  if (!liveShop) {
+    return json({ ok: false, error: "Missing LIVE_SHOP_DOMAIN in server environment." }, { status: 500 });
+  }
 
-    const liveShop = env.LIVE_SHOP_DOMAIN?.trim();
-    const normalizedLiveShop = normalizeShopDomain(liveShop);
-    const normalizedRequestShop = normalizeShopDomain(shop);
-    const adminToken = (env.SHOPIFY_ADMIN_TOKEN || env.SHOPIFY_ADMIN_API_ACCESS_TOKEN || "").trim();
+  if (!shop) {
+    return json({ ok: false, error: "Missing shop parameter in proxy request." }, { status: 400 });
+  }
 
-    if (adminToken && normalizedLiveShop && normalizedRequestShop === normalizedLiveShop) {
-      via = "admin_token";
-      const apiVersion = "2026-01";
-      admin = {
-        graphql: async (query: string, opts: any = {}) => {
-          const endpoint = `https://${shop}/admin/api/${apiVersion}/graphql.json`;
-          return fetch(endpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Shopify-Access-Token": adminToken,
-            },
-            body: JSON.stringify({ query, variables: opts?.variables ?? {} }),
-          });
-        },
-      };
-    } else {
-      console.error("[create-discount-live] unauthenticated.admin failed:", e?.message ?? e);
-      console.error("[create-discount-live] fallback mismatch:", {
-        hasToken: Boolean(adminToken),
-        requestShop: normalizedRequestShop,
-        liveShop: normalizedLiveShop,
-      });
-      return json(
-        {
-          ok: false,
-          error:
-            "No offline session for this shop. Either open the app once in Admin to create it, or set LIVE_SHOP_DOMAIN and SHOPIFY_ADMIN_TOKEN env vars for direct Admin API access.",
-          detail: String(e?.message ?? e),
-        },
-        { status: 401 }
-      );
-    }
+  if (shop !== liveShop) {
+    return json(
+      { ok: false, error: "Shop mismatch.", detail: `request shop=${shop}, configured shop=${liveShop}` },
+      { status: 401 }
+    );
   }
 
   const code = `STUDENT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
   try {
-    const result = await admin.graphql(
-      `
+    const result = await fetch(`https://${liveShop}/admin/api/2026-01/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": adminToken,
+      },
+      body: JSON.stringify({
+        query: `
         mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
           discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
             codeDiscountNode { id }
@@ -104,7 +69,6 @@ async function handle(request: Request) {
           }
         }
       `,
-      {
         variables: {
           basicCodeDiscount: {
             title: `Student Discount ${code}`,
@@ -118,8 +82,8 @@ async function handle(request: Request) {
             usageLimit: 1,
           },
         },
-      }
-    );
+      }),
+    });
 
     let bodyText = "";
     let body: any = null;
@@ -142,7 +106,7 @@ async function handle(request: Request) {
       return json({ ok: false, userErrors }, { status: 400 });
     }
 
-    return json({ ok: true, code, via });
+    return json({ ok: true, code, via: "admin_token" });
   } catch (e: any) {
     console.error("[create-discount-live] graphql exception:", e?.stack ?? e);
     return json(
