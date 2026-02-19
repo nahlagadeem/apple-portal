@@ -6,6 +6,19 @@ const JSON_HEADERS = {
 };
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 
+function normalizeShopDomain(input: string | null | undefined): string {
+  if (!input) return "";
+  const trimmed = String(input).trim().toLowerCase();
+  if (!trimmed) return "";
+  try {
+    const withProtocol = trimmed.startsWith("http://") || trimmed.startsWith("https://") ? trimmed : `https://${trimmed}`;
+    const host = new URL(withProtocol).hostname.trim().toLowerCase();
+    return host;
+  } catch {
+    return trimmed.replace(/^https?:\/\//, "").split("/")[0].trim().toLowerCase();
+  }
+}
+
 function json(data: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(data), {
     ...init,
@@ -40,9 +53,11 @@ async function handle(request: Request) {
     console.warn("[create-discount-live] offline session not found; trying Admin token fallback");
 
     const liveShop = env.LIVE_SHOP_DOMAIN?.trim();
+    const normalizedLiveShop = normalizeShopDomain(liveShop);
+    const normalizedRequestShop = normalizeShopDomain(shop);
     const adminToken = (env.SHOPIFY_ADMIN_TOKEN || env.SHOPIFY_ADMIN_API_ACCESS_TOKEN || "").trim();
 
-    if (adminToken && liveShop && shop === liveShop) {
+    if (adminToken && normalizedLiveShop && normalizedRequestShop === normalizedLiveShop) {
       via = "admin_token";
       const apiVersion = "2026-01";
       admin = {
@@ -60,6 +75,11 @@ async function handle(request: Request) {
       };
     } else {
       console.error("[create-discount-live] unauthenticated.admin failed:", e?.message ?? e);
+      console.error("[create-discount-live] fallback mismatch:", {
+        hasToken: Boolean(adminToken),
+        requestShop: normalizedRequestShop,
+        liveShop: normalizedLiveShop,
+      });
       return json(
         {
           ok: false,
