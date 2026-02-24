@@ -1,7 +1,7 @@
 {
-  "name": "[Example] Discount UI extension",
-  "description": "Discount UI extension",
-  "title": "Select which discount types to apply at checkout",
+  "name": "Combined Student Discount Settings",
+  "description": "Configure combined student discount behavior",
+  "title": "Configure combined student discount",
   "loading": "Loading...",
   "label": "Percentage off",
   "collections": {

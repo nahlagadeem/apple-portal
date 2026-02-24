@@ -185,7 +185,7 @@ export default function Index() {
   };
 
   return (
-    <s-page heading="Category Tier Discount Manager">
+    <s-page heading="Combined Student Discount Manager">
       <s-section heading="Create code discount in Shopify">
         <s-paragraph>
           This creates a Shopify Function code discount for your existing logic:
