@@ -1,0 +1,30 @@
+query RunInput {
+  discountNode {
+    metafield(namespace: "$app:category-tier-discount", key: "function-configuration") {
+      value
+    }
+  }
+  cart {
+    lines {
+      id
+      quantity
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            ipad: inCollections(ids: ["gid://shopify/Collection/452991221978"]) {
+              isMember
+            }
+            mac: inCollections(ids: ["gid://shopify/Collection/452991746266"]) {
+              isMember
+            }
+            accessories: inCollections(ids: ["gid://shopify/Collection/453527797978"]) {
+              isMember
+            }
+          }
+        }
+      }
+    }
+  }
+}
