@@ -1,9 +1,4 @@
-query RunInput {
-  discountNode {
-    metafield(namespace: "$app:category-tier-discount", key: "function-configuration") {
-      value
-    }
-  }
+query CartInput {
   cart {
     lines {
       id
@@ -11,7 +6,6 @@ query RunInput {
       merchandise {
         __typename
         ... on ProductVariant {
-          id
           product {
             ipad: inCollections(ids: ["gid://shopify/Collection/452991221978"]) {
               isMember
@@ -26,5 +20,8 @@ query RunInput {
         }
       }
     }
+  }
+  discount {
+    discountClasses
   }
 }

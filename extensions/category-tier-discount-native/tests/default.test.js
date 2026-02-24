@@ -21,7 +21,8 @@ describe("Default Integration Test", () => {
   }, 45000);
 
   const fixturesDir = path.join(__dirname, "fixtures");
-  const fixtureFiles = fs.readdirSync(fixturesDir)
+  const fixtureFiles = fs
+    .readdirSync(fixturesDir)
     .filter((file) => file.endsWith(".json"))
     .map((file) => path.join(fixturesDir, file));
 
