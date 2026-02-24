@@ -48,15 +48,15 @@ export const action = async ({ request }) => {
   const discountFunction =
     functionNodes.find(
       (node) =>
-        String(node?.apiType || "").toLowerCase() === "discounts" &&
+        String(node?.apiType || "").toLowerCase().startsWith("discount") &&
         String(node?.title || "").toLowerCase().includes("category-tier-discount-native"),
     ) ||
     functionNodes.find(
       (node) =>
-        String(node?.apiType || "").toLowerCase() === "discounts" &&
+        String(node?.apiType || "").toLowerCase().startsWith("discount") &&
         String(node?.app?.title || "").toLowerCase().includes("student_discount"),
     ) ||
-    functionNodes.find((node) => String(node?.apiType || "").toLowerCase() === "discounts");
+    functionNodes.find((node) => String(node?.apiType || "").toLowerCase().startsWith("discount"));
 
   if (!discountFunction?.id) {
     return {
@@ -227,3 +227,4 @@ export default function Index() {
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
 };
+
