@@ -15,7 +15,3 @@ description = "t:description"
   [extensions.build]
   command = ""
   path = "dist/function.wasm"
-
-  [extensions.ui.paths]
-  create = "/"
-  details = "/"
