@@ -23,5 +23,11 @@ query CartInput {
   }
   discount {
     discountClasses
+    metafield(
+      namespace: "$app:category-tier-discount-native"
+      key: "function-configuration"
+    ) {
+      value
+    }
   }
 }

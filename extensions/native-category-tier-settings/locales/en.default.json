@@ -1,20 +1,11 @@
 {
   "name": "Combined Student Discount Settings",
   "description": "Configure combined student discount behavior",
-  "title": "Configure combined student discount",
-  "loading": "Loading...",
-  "label": "Percentage off",
-  "collections": {
-    "buttonLabel": "Choose collections",
-    "allProducts": "All products",
-    "collections": "Collections",
-    "appliesTo": "Applies to"
-  },
-  "discountClasses": {
-    "product": "Product discount",
-    "order": "Order discount",
-    "shipping": "Shipping discount"
-  },
-  "error": "Unable to update discount types. Please try again."
+  "title": "Collection percentages",
+  "labels": {
+    "ipad": "iPad percentage",
+    "mac": "Mac percentage",
+    "accessories": "Accessories percentage"
+  }
 }
 

@@ -5,6 +5,41 @@ import {
   CartLinesDiscountsGenerateRunResult,
 } from '../generated/api';
 
+type TierConfig = {
+  ipadPercentage: number;
+  macPercentage: number;
+  accessoriesPercentage: number;
+};
+
+const DEFAULT_CONFIG: TierConfig = {
+  ipadPercentage: 8,
+  macPercentage: 13,
+  accessoriesPercentage: 5,
+};
+
+function clampPercentage(value: unknown, fallback: number): number {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return fallback;
+  if (numberValue < 0) return 0;
+  if (numberValue > 100) return 100;
+  return numberValue;
+}
+
+function readTierConfig(input: CartInput): TierConfig {
+  const rawValue = input.discount.metafield?.value;
+  if (!rawValue) return DEFAULT_CONFIG;
+
+  try {
+    const parsed = JSON.parse(rawValue) as Partial<TierConfig>;
+    return {
+      ipadPercentage: clampPercentage(parsed.ipadPercentage, DEFAULT_CONFIG.ipadPercentage),
+      macPercentage: clampPercentage(parsed.macPercentage, DEFAULT_CONFIG.macPercentage),
+      accessoriesPercentage: clampPercentage(parsed.accessoriesPercentage, DEFAULT_CONFIG.accessoriesPercentage),
+    };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
 
 export function cartLinesDiscountsGenerateRun(
   input: CartInput,
@@ -21,6 +56,7 @@ export function cartLinesDiscountsGenerateRun(
     return {operations: []};
   }
 
+  const config = readTierConfig(input);
   const productLinesByPercent: Record<number, {id: string; quantity: number}[]> =
     {};
 
@@ -29,9 +65,9 @@ export function cartLinesDiscountsGenerateRun(
 
     const product = line.merchandise.product;
     const percentage =
-      (product.mac.some((membership) => membership.isMember) && 13) ||
-      (product.ipad.some((membership) => membership.isMember) && 8) ||
-      (product.accessories.some((membership) => membership.isMember) && 5) ||
+      (product.mac.some((membership) => membership.isMember) && config.macPercentage) ||
+      (product.ipad.some((membership) => membership.isMember) && config.ipadPercentage) ||
+      (product.accessories.some((membership) => membership.isMember) && config.accessoriesPercentage) ||
       0;
 
     if (percentage <= 0) continue;
