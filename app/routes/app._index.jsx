@@ -18,7 +18,7 @@ async function runGraphql(admin, query, variables = {}) {
 export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
-  const mode = String(formData.get("mode") || "automatic");
+  const mode = String(formData.get("mode") || "code");
 
   const functionsQuery = `#graphql
     query DiscountFunctions {
@@ -67,10 +67,10 @@ export const action = async ({ request }) => {
   }
 
   const now = new Date().toISOString();
-  const title = `Category Tier Discount ${new Date().toISOString().slice(0, 19)}`;
 
   if (mode === "code") {
     const code = `CAT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const title = code;
     const mutation = `#graphql
       mutation CreateCodeDiscount($codeAppDiscount: DiscountCodeAppInput!) {
         discountCodeAppCreate(codeAppDiscount: $codeAppDiscount) {
@@ -178,12 +178,6 @@ export default function Index() {
     }
   }, [fetcher.data, shopify]);
 
-  const createAutomatic = () => {
-    const form = new FormData();
-    form.set("mode", "automatic");
-    fetcher.submit(form, { method: "POST" });
-  };
-
   const createCode = () => {
     const form = new FormData();
     form.set("mode", "code");
@@ -191,18 +185,14 @@ export default function Index() {
   };
 
   return (
-    <s-page heading="Category Tier Discount">
-      <s-section heading="Create discount directly in Shopify">
+    <s-page heading="Category Tier Discount Manager">
+      <s-section heading="Create code discount in Shopify">
         <s-paragraph>
-          This creates a Shopify Function discount for your existing logic:
+          This creates a Shopify Function code discount for your existing logic:
           iPad 8%, Mac 13%, Accessories 5%.
         </s-paragraph>
         <s-stack direction="inline" gap="base">
-          <s-button onClick={createAutomatic} {...(isSubmitting ? { loading: true } : {})}>
-            Create automatic discount
-          </s-button>
           <s-button
-            variant="secondary"
             onClick={createCode}
             {...(isSubmitting ? { loading: true } : {})}
           >
