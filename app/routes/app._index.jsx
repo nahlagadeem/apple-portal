@@ -1,4 +1,4 @@
-﻿import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useFetcher } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -15,10 +15,21 @@ async function runGraphql(admin, query, variables = {}) {
   return { response, json };
 }
 
+function clampPercentage(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (parsed < 0) return 0;
+  if (parsed > 100) return 100;
+  return parsed;
+}
+
 export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
-  const mode = String(formData.get("mode") || "code");
+
+  const ipadPercentage = clampPercentage(formData.get("ipadPercentage"), 8);
+  const macPercentage = clampPercentage(formData.get("macPercentage"), 13);
+  const accessoriesPercentage = clampPercentage(formData.get("accessoriesPercentage"), 5);
 
   const functionsQuery = `#graphql
     query DiscountFunctions {
@@ -66,66 +77,19 @@ export const action = async ({ request }) => {
     };
   }
 
+  const code = `CAT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
   const now = new Date().toISOString();
-
-  if (mode === "code") {
-    const code = `CAT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    const title = code;
-    const mutation = `#graphql
-      mutation CreateCodeDiscount($codeAppDiscount: DiscountCodeAppInput!) {
-        discountCodeAppCreate(codeAppDiscount: $codeAppDiscount) {
-          codeAppDiscount {
-            discountId
-            title
-            codes(first: 10) {
-              nodes {
-                code
-              }
-            }
-          }
-          userErrors {
-            field
-            message
-          }
-        }
-      }
-    `;
-
-    const variables = {
-      codeAppDiscount: {
-        title,
-        code,
-        functionId: discountFunction.id,
-        startsAt: now,
-        discountClasses: ["PRODUCT"],
-        combinesWith: {
-          orderDiscounts: false,
-          productDiscounts: false,
-          shippingDiscounts: false,
-        },
-      },
-    };
-
-    const result = await runGraphql(admin, mutation, variables);
-    const userErrors = result.json?.data?.discountCodeAppCreate?.userErrors ?? [];
-
-    return {
-      ok: result.response.ok && userErrors.length === 0,
-      mode,
-      functionId: discountFunction.id,
-      code,
-      result: result.json,
-      userErrors,
-    };
-  }
-
   const mutation = `#graphql
-    mutation CreateAutomaticDiscount($automaticAppDiscount: DiscountAutomaticAppInput!) {
-      discountAutomaticAppCreate(automaticAppDiscount: $automaticAppDiscount) {
-        automaticAppDiscount {
+    mutation CreateCodeDiscount($codeAppDiscount: DiscountCodeAppInput!) {
+      discountCodeAppCreate(codeAppDiscount: $codeAppDiscount) {
+        codeAppDiscount {
           discountId
           title
-          status
+          codes(first: 10) {
+            nodes {
+              code
+            }
+          }
         }
         userErrors {
           field
@@ -136,8 +100,9 @@ export const action = async ({ request }) => {
   `;
 
   const variables = {
-    automaticAppDiscount: {
-      title,
+    codeAppDiscount: {
+      title: code,
+      code,
       functionId: discountFunction.id,
       startsAt: now,
       discountClasses: ["PRODUCT"],
@@ -146,16 +111,29 @@ export const action = async ({ request }) => {
         productDiscounts: false,
         shippingDiscounts: false,
       },
+      metafields: [
+        {
+          namespace: "$app:category-tier-discount-native",
+          key: "function-configuration",
+          type: "json",
+          value: JSON.stringify({
+            ipadPercentage,
+            macPercentage,
+            accessoriesPercentage,
+          }),
+        },
+      ],
     },
   };
 
   const result = await runGraphql(admin, mutation, variables);
-  const userErrors = result.json?.data?.discountAutomaticAppCreate?.userErrors ?? [];
+  const userErrors = result.json?.data?.discountCodeAppCreate?.userErrors ?? [];
 
   return {
     ok: result.response.ok && userErrors.length === 0,
-    mode: "automatic",
     functionId: discountFunction.id,
+    code,
+    config: { ipadPercentage, macPercentage, accessoriesPercentage },
     result: result.json,
     userErrors,
   };
@@ -165,6 +143,10 @@ export default function Index() {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
 
+  const [ipadPercentage, setIpadPercentage] = useState(8);
+  const [macPercentage, setMacPercentage] = useState(13);
+  const [accessoriesPercentage, setAccessoriesPercentage] = useState(5);
+
   const isSubmitting =
     ["loading", "submitting"].includes(fetcher.state) &&
     fetcher.formMethod === "POST";
@@ -172,7 +154,7 @@ export default function Index() {
   useEffect(() => {
     if (!fetcher.data) return;
     if (fetcher.data?.ok) {
-      shopify.toast.show("Discount created in Shopify admin");
+      shopify.toast.show("Discount code created");
     } else if (fetcher.data?.error || (fetcher.data?.userErrors?.length ?? 0) > 0) {
       shopify.toast.show("Failed to create discount");
     }
@@ -180,22 +162,52 @@ export default function Index() {
 
   const createCode = () => {
     const form = new FormData();
-    form.set("mode", "code");
+    form.set("ipadPercentage", String(ipadPercentage));
+    form.set("macPercentage", String(macPercentage));
+    form.set("accessoriesPercentage", String(accessoriesPercentage));
     fetcher.submit(form, { method: "POST" });
   };
 
   return (
     <s-page heading="Combined Student Discount Manager">
       <s-section heading="Create code discount in Shopify">
-        <s-paragraph>
-          This creates a Shopify Function code discount for your existing logic:
-          iPad 8%, Mac 13%, Accessories 5%.
-        </s-paragraph>
+        <s-paragraph>Admin can set each collection percentage before creating the code.</s-paragraph>
+        <s-stack gap="base">
+          <s-number-field
+            label="iPad percentage"
+            min={0}
+            max={100}
+            suffix="%"
+            value={String(ipadPercentage)}
+            onChange={(event) =>
+              setIpadPercentage(clampPercentage(event.currentTarget.value, ipadPercentage))
+            }
+          />
+          <s-number-field
+            label="Mac percentage"
+            min={0}
+            max={100}
+            suffix="%"
+            value={String(macPercentage)}
+            onChange={(event) =>
+              setMacPercentage(clampPercentage(event.currentTarget.value, macPercentage))
+            }
+          />
+          <s-number-field
+            label="Accessories percentage"
+            min={0}
+            max={100}
+            suffix="%"
+            value={String(accessoriesPercentage)}
+            onChange={(event) =>
+              setAccessoriesPercentage(
+                clampPercentage(event.currentTarget.value, accessoriesPercentage),
+              )
+            }
+          />
+        </s-stack>
         <s-stack direction="inline" gap="base">
-          <s-button
-            onClick={createCode}
-            {...(isSubmitting ? { loading: true } : {})}
-          >
+          <s-button onClick={createCode} {...(isSubmitting ? { loading: true } : {})}>
             Create code discount
           </s-button>
         </s-stack>
@@ -217,4 +229,3 @@ export default function Index() {
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
 };
-
