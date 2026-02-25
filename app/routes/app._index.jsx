@@ -173,7 +173,12 @@ async function fetchExistingDiscount(admin, discountNodeId) {
 }
 
 export const loader = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  let admin = null;
+  try {
+    ({ admin } = await authenticate.admin(request));
+  } catch {
+    return { existing: null, unavailable: true };
+  }
   const url = new URL(request.url);
   const discountNodeId = normalizeDiscountNodeId(
     url.searchParams.get("id") ||
@@ -182,7 +187,7 @@ export const loader = async ({ request }) => {
   );
 
   const existing = await fetchExistingDiscount(admin, discountNodeId);
-  return { existing };
+  return { existing, unavailable: false };
 };
 
 export const action = async ({ request }) => {
@@ -292,7 +297,7 @@ export const action = async ({ request }) => {
 };
 
 export default function Index() {
-  const { existing } = useLoaderData();
+  const { existing, unavailable } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
 
@@ -352,6 +357,11 @@ export default function Index() {
 
   return (
     <s-page heading="Combined Student Discount Manager">
+      {unavailable ? (
+        <s-section heading="Session unavailable">
+          <s-paragraph>Please open this discount from Shopify Admin again.</s-paragraph>
+        </s-section>
+      ) : null}
       <s-section heading={isEdit ? "Edit code discount" : "Create code discount in Shopify"}>
         <s-paragraph>
           {isEdit
