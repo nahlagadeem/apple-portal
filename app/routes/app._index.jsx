@@ -50,8 +50,70 @@ function normalizeDiscountNodeId(rawId) {
   const value = String(rawId).trim();
   if (!value) return "";
   if (value.startsWith("gid://")) return value;
-  if (/^\d+$/.test(value)) return `gid://shopify/DiscountCodeNode/${value}`;
+  if (/^\d+$/.test(value)) return value;
   return value;
+}
+
+function decodeBase64Url(value) {
+  if (!value) return "";
+  try {
+    let normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
+    while (normalized.length % 4 !== 0) normalized += "=";
+    return Buffer.from(normalized, "base64").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+function extractDiscountIdCandidates(requestUrl, requestHeaders) {
+  const url = new URL(requestUrl);
+  const ids = new Set();
+
+  const directParams = [
+    "id",
+    "discountId",
+    "discountNodeId",
+    "discount_id",
+    "resourceId",
+    "resource_id",
+  ];
+  for (const key of directParams) {
+    const value = normalizeDiscountNodeId(url.searchParams.get(key));
+    if (value) ids.add(value);
+  }
+
+  for (const [_, raw] of url.searchParams.entries()) {
+    if (!raw) continue;
+    const gidMatch = raw.match(/gid:\/\/shopify\/[A-Za-z0-9_]+\/\d+/);
+    if (gidMatch?.[0]) ids.add(gidMatch[0]);
+    if (/^\d+$/.test(raw.trim())) ids.add(raw.trim());
+  }
+
+  const decodedHost = decodeBase64Url(url.searchParams.get("host"));
+  const hostGid = decodedHost.match(/gid:\/\/shopify\/[A-Za-z0-9_]+\/\d+/);
+  if (hostGid?.[0]) ids.add(hostGid[0]);
+
+  const referer = requestHeaders.get("referer") || requestHeaders.get("referrer") || "";
+  if (referer) {
+    const refGid = referer.match(/gid:\/\/shopify\/[A-Za-z0-9_]+\/\d+/);
+    if (refGid?.[0]) ids.add(refGid[0]);
+    const refNumeric = referer.match(/\/discounts\/(\d+)/);
+    if (refNumeric?.[1]) ids.add(refNumeric[1]);
+  }
+
+  const expanded = new Set();
+  for (const id of ids) {
+    const normalized = normalizeDiscountNodeId(id);
+    if (!normalized) continue;
+    expanded.add(normalized);
+    if (/^\d+$/.test(normalized)) {
+      expanded.add(`gid://shopify/DiscountNode/${normalized}`);
+      expanded.add(`gid://shopify/DiscountCodeNode/${normalized}`);
+      expanded.add(`gid://shopify/DiscountCodeApp/${normalized}`);
+    }
+  }
+
+  return Array.from(expanded);
 }
 
 async function runGraphql(admin, query, variables = {}) {
@@ -101,12 +163,32 @@ async function resolveDiscountFunction(admin) {
   return { functionId: discountFunction.id, error: "" };
 }
 
-async function fetchExistingDiscount(admin, discountNodeId) {
-  if (!discountNodeId) return null;
+async function fetchExistingDiscount(admin, discountNodeIds) {
+  if (!discountNodeIds?.length) return null;
   const query = `#graphql
     query ExistingCodeDiscount($id: ID!) {
       node(id: $id) {
         __typename
+        ... on DiscountNode {
+          id
+          discount {
+            __typename
+            ... on DiscountCodeApp {
+              title
+              codes(first: 1) {
+                nodes {
+                  code
+                }
+              }
+              metafield(
+                namespace: "$app:category-tier-discount-native"
+                key: "function-configuration"
+              ) {
+                value
+              }
+            }
+          }
+        }
         ... on DiscountCodeNode {
           id
           codeDiscount {
@@ -129,6 +211,7 @@ async function fetchExistingDiscount(admin, discountNodeId) {
         }
         ... on DiscountCodeApp {
           discountId
+          __typename
           title
           codes(first: 1) {
             nodes {
@@ -146,43 +229,49 @@ async function fetchExistingDiscount(admin, discountNodeId) {
     }
   `;
 
-  const result = await runGraphql(admin, query, { id: discountNodeId });
-  if (!result.response.ok) return null;
+  for (const candidateId of discountNodeIds) {
+    const result = await runGraphql(admin, query, { id: candidateId });
+    if (!result.response.ok) continue;
 
-  const node = result.json?.data?.node;
-  if (!node) return null;
+    const node = result.json?.data?.node;
+    if (!node) continue;
 
-  let effectiveNodeId = discountNodeId;
-  let discount = null;
-  if (node.__typename === "DiscountCodeNode") {
-    effectiveNodeId = node.id || discountNodeId;
-    discount = node.codeDiscount;
-  } else if (node.__typename === "DiscountCodeApp") {
-    effectiveNodeId = node.discountId || discountNodeId;
-    discount = node;
+    let effectiveNodeId = candidateId;
+    let discount = null;
+
+    if (node.__typename === "DiscountCodeNode") {
+      effectiveNodeId = node.id || candidateId;
+      discount = node.codeDiscount;
+    } else if (node.__typename === "DiscountCodeApp") {
+      effectiveNodeId = node.discountId || candidateId;
+      discount = node;
+    } else if (node.__typename === "DiscountNode") {
+      effectiveNodeId = node.id || candidateId;
+      discount = node.discount;
+    }
+
+    if (!discount || discount.__typename !== "DiscountCodeApp") continue;
+
+    const code = discount.codes?.nodes?.[0]?.code || discount.title || "";
+    return {
+      discountNodeId: effectiveNodeId,
+      code,
+      config: parseConfig(discount.metafield?.value),
+    };
   }
-
-  if (!discount || discount.__typename !== "DiscountCodeApp") return null;
-
-  const code = discount.codes?.nodes?.[0]?.code || discount.title || "";
-  return {
-    discountNodeId: effectiveNodeId,
-    code,
-    config: parseConfig(discount.metafield?.value),
-  };
+  return null;
 }
 
 export const loader = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
-  const url = new URL(request.url);
-  const discountNodeId = normalizeDiscountNodeId(
-    url.searchParams.get("id") ||
-      url.searchParams.get("discountId") ||
-      url.searchParams.get("discountNodeId"),
-  );
+  const { admin, session } = await authenticate.admin(request);
+  const discountNodeIds = extractDiscountIdCandidates(request.url, request.headers);
+  const existing = await fetchExistingDiscount(admin, discountNodeIds);
+  const shopHandle = String(session?.shop || "").replace(".myshopify.com", "");
+  const adminDiscountsUrl = shopHandle
+    ? `https://admin.shopify.com/store/${shopHandle}/discounts`
+    : "https://admin.shopify.com";
 
-  const existing = await fetchExistingDiscount(admin, discountNodeId);
-  return { existing };
+  return { existing, adminDiscountsUrl };
 };
 
 export const action = async ({ request }) => {
@@ -328,7 +417,7 @@ export const action = async ({ request }) => {
 };
 
 export default function Index() {
-  const { existing } = useLoaderData();
+  const { existing, adminDiscountsUrl } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
 
@@ -366,10 +455,13 @@ export default function Index() {
     if (!fetcher.data) return;
     if (fetcher.data?.ok) {
       shopify.toast.show(isEdit ? "Discount updated" : "Discount code created");
+      if (typeof window !== "undefined" && window.top) {
+        window.top.location.href = adminDiscountsUrl;
+      }
     } else if (fetcher.data?.error || (fetcher.data?.userErrors?.length ?? 0) > 0) {
       shopify.toast.show("Failed to save discount");
     }
-  }, [fetcher.data, shopify, isEdit]);
+  }, [fetcher.data, shopify, isEdit, adminDiscountsUrl]);
 
   const submitForm = () => {
     const form = new FormData();
