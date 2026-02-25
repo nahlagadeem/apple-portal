@@ -50,55 +50,8 @@ function normalizeDiscountNodeId(rawId) {
   const value = String(rawId).trim();
   if (!value) return "";
   if (value.startsWith("gid://")) return value;
-  if (/^\d+$/.test(value)) return value;
+  if (/^\d+$/.test(value)) return `gid://shopify/DiscountCodeNode/${value}`;
   return value;
-}
-
-function extractDiscountIdCandidates(requestUrl, requestHeaders) {
-  const url = new URL(requestUrl);
-  const ids = new Set();
-
-  const directParams = [
-    "id",
-    "discountId",
-    "discountNodeId",
-    "discount_id",
-    "resourceId",
-    "resource_id",
-  ];
-  for (const key of directParams) {
-    const value = normalizeDiscountNodeId(url.searchParams.get(key));
-    if (value) ids.add(value);
-  }
-
-  for (const [_, raw] of url.searchParams.entries()) {
-    if (!raw) continue;
-    const gidMatch = raw.match(/gid:\/\/shopify\/[A-Za-z0-9_]+\/\d+/);
-    if (gidMatch?.[0]) ids.add(gidMatch[0]);
-    if (/^\d+$/.test(raw.trim())) ids.add(raw.trim());
-  }
-
-  const referer = requestHeaders.get("referer") || requestHeaders.get("referrer") || "";
-  if (referer) {
-    const refGid = referer.match(/gid:\/\/shopify\/[A-Za-z0-9_]+\/\d+/);
-    if (refGid?.[0]) ids.add(refGid[0]);
-    const refNumeric = referer.match(/\/discounts\/(\d+)/);
-    if (refNumeric?.[1]) ids.add(refNumeric[1]);
-  }
-
-  const expanded = new Set();
-  for (const id of ids) {
-    const normalized = normalizeDiscountNodeId(id);
-    if (!normalized) continue;
-    expanded.add(normalized);
-    if (/^\d+$/.test(normalized)) {
-      expanded.add(`gid://shopify/DiscountNode/${normalized}`);
-      expanded.add(`gid://shopify/DiscountCodeNode/${normalized}`);
-      expanded.add(`gid://shopify/DiscountCodeApp/${normalized}`);
-    }
-  }
-
-  return Array.from(expanded);
 }
 
 async function runGraphql(admin, query, variables = {}) {
@@ -148,8 +101,8 @@ async function resolveDiscountFunction(admin) {
   return { functionId: discountFunction.id, error: "" };
 }
 
-async function fetchExistingDiscount(admin, discountNodeIds) {
-  if (!discountNodeIds?.length) return null;
+async function fetchExistingDiscount(admin, discountNodeId) {
+  if (!discountNodeId) return null;
   const query = `#graphql
     query ExistingCodeDiscount($id: ID!) {
       node(id: $id) {
@@ -176,7 +129,6 @@ async function fetchExistingDiscount(admin, discountNodeIds) {
         }
         ... on DiscountCodeApp {
           discountId
-          __typename
           title
           codes(first: 1) {
             nodes {
@@ -194,50 +146,43 @@ async function fetchExistingDiscount(admin, discountNodeIds) {
     }
   `;
 
-  for (const candidateId of discountNodeIds) {
-    const result = await runGraphql(admin, query, { id: candidateId });
-    if (!result.response.ok) continue;
+  const result = await runGraphql(admin, query, { id: discountNodeId });
+  if (!result.response.ok) return null;
 
-    const node = result.json?.data?.node;
-    if (!node) continue;
+  const node = result.json?.data?.node;
+  if (!node) return null;
 
-    let effectiveNodeId = candidateId;
-    let discount = null;
-
-    if (node.__typename === "DiscountCodeNode") {
-      effectiveNodeId = node.id || candidateId;
-      discount = node.codeDiscount;
-    } else if (node.__typename === "DiscountCodeApp") {
-      effectiveNodeId = node.discountId || candidateId;
-      discount = node;
-    }
-
-    if (!discount || discount.__typename !== "DiscountCodeApp") continue;
-
-    const code = discount.codes?.nodes?.[0]?.code || discount.title || "";
-    return {
-      discountNodeId: effectiveNodeId,
-      code,
-      config: parseConfig(discount.metafield?.value),
-    };
+  let effectiveNodeId = discountNodeId;
+  let discount = null;
+  if (node.__typename === "DiscountCodeNode") {
+    effectiveNodeId = node.id || discountNodeId;
+    discount = node.codeDiscount;
+  } else if (node.__typename === "DiscountCodeApp") {
+    effectiveNodeId = node.discountId || discountNodeId;
+    discount = node;
   }
-  return null;
+
+  if (!discount || discount.__typename !== "DiscountCodeApp") return null;
+
+  const code = discount.codes?.nodes?.[0]?.code || discount.title || "";
+  return {
+    discountNodeId: effectiveNodeId,
+    code,
+    config: parseConfig(discount.metafield?.value),
+  };
 }
 
 export const loader = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  const shopHandle = String(session?.shop || "").replace(".myshopify.com", "");
-  const adminDiscountsUrl = shopHandle
-    ? `https://admin.shopify.com/store/${shopHandle}/discounts`
-    : "https://admin.shopify.com";
+  const { admin } = await authenticate.admin(request);
+  const url = new URL(request.url);
+  const discountNodeId = normalizeDiscountNodeId(
+    url.searchParams.get("id") ||
+      url.searchParams.get("discountId") ||
+      url.searchParams.get("discountNodeId"),
+  );
 
-  try {
-    const discountNodeIds = extractDiscountIdCandidates(request.url, request.headers);
-    const existing = await fetchExistingDiscount(admin, discountNodeIds);
-    return { existing, adminDiscountsUrl };
-  } catch {
-    return { existing: null, adminDiscountsUrl };
-  }
+  const existing = await fetchExistingDiscount(admin, discountNodeId);
+  return { existing };
 };
 
 export const action = async ({ request }) => {
@@ -274,50 +219,14 @@ export const action = async ({ request }) => {
   }
 
   if (discountNodeId) {
-    const updateMutation = `#graphql
-      mutation UpdateCodeDiscount($id: ID!, $codeAppDiscount: DiscountCodeAppInput!) {
-        discountCodeAppUpdate(id: $id, codeAppDiscount: $codeAppDiscount) {
-          codeAppDiscount {
-            discountId
-            title
-            codes(first: 1) {
-              nodes {
-                code
-              }
-            }
-          }
-          userErrors {
-            field
-            message
-          }
-        }
-      }
-    `;
-
-    const updateVariables = {
-      id: discountNodeId,
-      codeAppDiscount: {
-        metafields: [
-          {
-            namespace: "$app:category-tier-discount-native",
-            key: "function-configuration",
-            type: "json",
-            value: JSON.stringify(config),
-          },
-        ],
-      },
-    };
-
-    const result = await runGraphql(admin, updateMutation, updateVariables);
-    const userErrors = result.json?.data?.discountCodeAppUpdate?.userErrors ?? [];
     return {
-      ok: result.response.ok && userErrors.length === 0,
+      ok: false,
       mode: "edit",
       discountNodeId,
       code,
       config,
-      result: result.json,
-      userErrors,
+      error: "Editing existing discounts is disabled.",
+      userErrors: [],
     };
   }
 
@@ -383,7 +292,7 @@ export const action = async ({ request }) => {
 };
 
 export default function Index() {
-  const { existing, adminDiscountsUrl } = useLoaderData();
+  const { existing } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
 
@@ -421,13 +330,13 @@ export default function Index() {
     if (!fetcher.data) return;
     if (fetcher.data?.ok) {
       shopify.toast.show(isEdit ? "Discount updated" : "Discount code created");
-      if (typeof window !== "undefined") window.location.assign(adminDiscountsUrl);
     } else if (fetcher.data?.error || (fetcher.data?.userErrors?.length ?? 0) > 0) {
       shopify.toast.show("Failed to save discount");
     }
-  }, [fetcher.data, shopify, isEdit, adminDiscountsUrl]);
+  }, [fetcher.data, shopify, isEdit]);
 
   const submitForm = () => {
+    if (isEdit) return;
     const form = new FormData();
     if (discountNodeId) form.set("discountNodeId", discountNodeId);
     form.set("code", code);
@@ -446,7 +355,7 @@ export default function Index() {
       <s-section heading={isEdit ? "Edit code discount" : "Create code discount in Shopify"}>
         <s-paragraph>
           {isEdit
-            ? "Only collection percentages are editable. Code/title is locked."
+            ? "Editing is disabled for existing discounts."
             : "Enter code and collection percentages before creating."}
         </s-paragraph>
 
@@ -465,6 +374,7 @@ export default function Index() {
               max={100}
               suffix="%"
               value={String(ipadPercentage)}
+              disabled={isEdit}
               onChange={(event) =>
                 setIpadPercentage(clampPercentage(event.currentTarget.value, ipadPercentage))
               }
@@ -475,6 +385,7 @@ export default function Index() {
               max={100}
               suffix="%"
               value={String(macPercentage)}
+              disabled={isEdit}
               onChange={(event) =>
                 setMacPercentage(clampPercentage(event.currentTarget.value, macPercentage))
               }
@@ -485,6 +396,7 @@ export default function Index() {
               max={100}
               suffix="%"
               value={String(accessoriesPercentage)}
+              disabled={isEdit}
               onChange={(event) =>
                 setAccessoriesPercentage(
                   clampPercentage(event.currentTarget.value, accessoriesPercentage),
@@ -500,6 +412,7 @@ export default function Index() {
               max={100}
               suffix="%"
               value={String(iphonePercentage)}
+              disabled={isEdit}
               onChange={(event) =>
                 setIphonePercentage(clampPercentage(event.currentTarget.value, iphonePercentage))
               }
@@ -510,6 +423,7 @@ export default function Index() {
               max={100}
               suffix="%"
               value={String(appleWatchPercentage)}
+              disabled={isEdit}
               onChange={(event) =>
                 setAppleWatchPercentage(
                   clampPercentage(event.currentTarget.value, appleWatchPercentage),
@@ -522,6 +436,7 @@ export default function Index() {
               max={100}
               suffix="%"
               value={String(tvHomePercentage)}
+              disabled={isEdit}
               onChange={(event) =>
                 setTvHomePercentage(clampPercentage(event.currentTarget.value, tvHomePercentage))
               }
@@ -535,6 +450,7 @@ export default function Index() {
               max={100}
               suffix="%"
               value={String(airpodsPercentage)}
+              disabled={isEdit}
               onChange={(event) =>
                 setAirpodsPercentage(clampPercentage(event.currentTarget.value, airpodsPercentage))
               }
@@ -543,7 +459,11 @@ export default function Index() {
         </s-stack>
 
         <s-stack direction="inline" gap="base">
-          <s-button onClick={submitForm} {...(isSubmitting ? { loading: true } : {})}>
+          <s-button
+            onClick={submitForm}
+            disabled={isEdit}
+            {...(isSubmitting ? { loading: true } : {})}
+          >
             {isEdit ? "Save changes" : "Create code discount"}
           </s-button>
         </s-stack>
