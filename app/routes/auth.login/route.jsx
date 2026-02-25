@@ -5,13 +5,26 @@ import { login } from "../../shopify.server";
 import { loginErrorMessage } from "./error.server";
 
 export const loader = async ({ request }) => {
-  const errors = loginErrorMessage(await login(request));
+  const url = new URL(request.url);
+  let errors = {};
+  if (url.searchParams.get("shop")) {
+    try {
+      errors = loginErrorMessage(await login(request));
+    } catch {
+      errors = { shop: "Unable to start login. Please try again." };
+    }
+  }
 
   return { errors };
 };
 
 export const action = async ({ request }) => {
-  const errors = loginErrorMessage(await login(request));
+  let errors = {};
+  try {
+    errors = loginErrorMessage(await login(request));
+  } catch {
+    errors = { shop: "Unable to log in. Check shop domain and try again." };
+  }
 
   return {
     errors,
