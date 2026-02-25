@@ -26,10 +26,19 @@ function clampPercentage(value, fallback) {
 export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
+  const code = String(formData.get("code") || "").trim().toUpperCase();
 
   const ipadPercentage = clampPercentage(formData.get("ipadPercentage"), 8);
   const macPercentage = clampPercentage(formData.get("macPercentage"), 13);
   const accessoriesPercentage = clampPercentage(formData.get("accessoriesPercentage"), 5);
+  const iphonePercentage = clampPercentage(formData.get("iphonePercentage"), 0);
+  const appleWatchPercentage = clampPercentage(formData.get("appleWatchPercentage"), 0);
+  const tvHomePercentage = clampPercentage(formData.get("tvHomePercentage"), 0);
+  const airpodsPercentage = clampPercentage(formData.get("airpodsPercentage"), 0);
+
+  if (!code) {
+    return { ok: false, error: "Please enter a discount code." };
+  }
 
   const functionsQuery = `#graphql
     query DiscountFunctions {
@@ -77,7 +86,6 @@ export const action = async ({ request }) => {
     };
   }
 
-  const code = `CAT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
   const now = new Date().toISOString();
   const mutation = `#graphql
     mutation CreateCodeDiscount($codeAppDiscount: DiscountCodeAppInput!) {
@@ -120,6 +128,10 @@ export const action = async ({ request }) => {
             ipadPercentage,
             macPercentage,
             accessoriesPercentage,
+            iphonePercentage,
+            appleWatchPercentage,
+            tvHomePercentage,
+            airpodsPercentage,
           }),
         },
       ],
@@ -133,7 +145,15 @@ export const action = async ({ request }) => {
     ok: result.response.ok && userErrors.length === 0,
     functionId: discountFunction.id,
     code,
-    config: { ipadPercentage, macPercentage, accessoriesPercentage },
+    config: {
+      ipadPercentage,
+      macPercentage,
+      accessoriesPercentage,
+      iphonePercentage,
+      appleWatchPercentage,
+      tvHomePercentage,
+      airpodsPercentage,
+    },
     result: result.json,
     userErrors,
   };
@@ -142,10 +162,15 @@ export const action = async ({ request }) => {
 export default function Index() {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
+  const [code, setCode] = useState("");
 
   const [ipadPercentage, setIpadPercentage] = useState(8);
   const [macPercentage, setMacPercentage] = useState(13);
   const [accessoriesPercentage, setAccessoriesPercentage] = useState(5);
+  const [iphonePercentage, setIphonePercentage] = useState(0);
+  const [appleWatchPercentage, setAppleWatchPercentage] = useState(0);
+  const [tvHomePercentage, setTvHomePercentage] = useState(0);
+  const [airpodsPercentage, setAirpodsPercentage] = useState(0);
 
   const isSubmitting =
     ["loading", "submitting"].includes(fetcher.state) &&
@@ -162,49 +187,107 @@ export default function Index() {
 
   const createCode = () => {
     const form = new FormData();
+    form.set("code", code);
     form.set("ipadPercentage", String(ipadPercentage));
     form.set("macPercentage", String(macPercentage));
     form.set("accessoriesPercentage", String(accessoriesPercentage));
+    form.set("iphonePercentage", String(iphonePercentage));
+    form.set("appleWatchPercentage", String(appleWatchPercentage));
+    form.set("tvHomePercentage", String(tvHomePercentage));
+    form.set("airpodsPercentage", String(airpodsPercentage));
     fetcher.submit(form, { method: "POST" });
   };
 
   return (
     <s-page heading="Combined Student Discount Manager">
       <s-section heading="Create code discount in Shopify">
-        <s-paragraph>Admin can set each collection percentage before creating the code.</s-paragraph>
+        <s-paragraph>Admin can enter code and set collection percentages before creating.</s-paragraph>
         <s-stack gap="base">
-          <s-number-field
-            label="iPad percentage"
-            min={0}
-            max={100}
-            suffix="%"
-            value={String(ipadPercentage)}
-            onChange={(event) =>
-              setIpadPercentage(clampPercentage(event.currentTarget.value, ipadPercentage))
-            }
+          <s-text-field
+            label="Discount code"
+            value={code}
+            onChange={(event) => setCode(String(event.currentTarget.value || "").toUpperCase())}
           />
-          <s-number-field
-            label="Mac percentage"
-            min={0}
-            max={100}
-            suffix="%"
-            value={String(macPercentage)}
-            onChange={(event) =>
-              setMacPercentage(clampPercentage(event.currentTarget.value, macPercentage))
-            }
-          />
-          <s-number-field
-            label="Accessories percentage"
-            min={0}
-            max={100}
-            suffix="%"
-            value={String(accessoriesPercentage)}
-            onChange={(event) =>
-              setAccessoriesPercentage(
-                clampPercentage(event.currentTarget.value, accessoriesPercentage),
-              )
-            }
-          />
+          <s-stack direction="inline" gap="base">
+            <s-number-field
+              label="iPad %"
+              min={0}
+              max={100}
+              suffix="%"
+              value={String(ipadPercentage)}
+              onChange={(event) =>
+                setIpadPercentage(clampPercentage(event.currentTarget.value, ipadPercentage))
+              }
+            />
+            <s-number-field
+              label="Mac %"
+              min={0}
+              max={100}
+              suffix="%"
+              value={String(macPercentage)}
+              onChange={(event) =>
+                setMacPercentage(clampPercentage(event.currentTarget.value, macPercentage))
+              }
+            />
+            <s-number-field
+              label="Accessories %"
+              min={0}
+              max={100}
+              suffix="%"
+              value={String(accessoriesPercentage)}
+              onChange={(event) =>
+                setAccessoriesPercentage(
+                  clampPercentage(event.currentTarget.value, accessoriesPercentage),
+                )
+              }
+            />
+          </s-stack>
+          <s-stack direction="inline" gap="base">
+            <s-number-field
+              label="iPhone %"
+              min={0}
+              max={100}
+              suffix="%"
+              value={String(iphonePercentage)}
+              onChange={(event) =>
+                setIphonePercentage(clampPercentage(event.currentTarget.value, iphonePercentage))
+              }
+            />
+            <s-number-field
+              label="Apple Watch %"
+              min={0}
+              max={100}
+              suffix="%"
+              value={String(appleWatchPercentage)}
+              onChange={(event) =>
+                setAppleWatchPercentage(
+                  clampPercentage(event.currentTarget.value, appleWatchPercentage),
+                )
+              }
+            />
+            <s-number-field
+              label="TV & Home %"
+              min={0}
+              max={100}
+              suffix="%"
+              value={String(tvHomePercentage)}
+              onChange={(event) =>
+                setTvHomePercentage(clampPercentage(event.currentTarget.value, tvHomePercentage))
+              }
+            />
+          </s-stack>
+          <s-stack direction="inline" gap="base">
+            <s-number-field
+              label="AirPods %"
+              min={0}
+              max={100}
+              suffix="%"
+              value={String(airpodsPercentage)}
+              onChange={(event) =>
+                setAirpodsPercentage(clampPercentage(event.currentTarget.value, airpodsPercentage))
+              }
+            />
+          </s-stack>
         </s-stack>
         <s-stack direction="inline" gap="base">
           <s-button onClick={createCode} {...(isSubmitting ? { loading: true } : {})}>

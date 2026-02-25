@@ -16,6 +16,18 @@ query CartInput {
             accessories: inCollections(ids: ["gid://shopify/Collection/453527797978"]) {
               isMember
             }
+            iphone: inCollections(ids: ["gid://shopify/Collection/452991123674"]) {
+              isMember
+            }
+            appleWatch: inCollections(ids: ["gid://shopify/Collection/52991287514"]) {
+              isMember
+            }
+            tvHome: inCollections(ids: ["gid://shopify/Collection/453560008922"]) {
+              isMember
+            }
+            airpods: inCollections(ids: ["gid://shopify/Collection/453560271066"]) {
+              isMember
+            }
           }
         }
       }

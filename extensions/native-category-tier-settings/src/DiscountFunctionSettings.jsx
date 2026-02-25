@@ -6,6 +6,10 @@ const DEFAULTS = {
   ipadPercentage: 8,
   macPercentage: 13,
   accessoriesPercentage: 5,
+  iphonePercentage: 0,
+  appleWatchPercentage: 0,
+  tvHomePercentage: 0,
+  airpodsPercentage: 0,
 };
 
 export default async () => {
@@ -50,38 +54,86 @@ function App() {
     >
       <s-heading>{i18n.translate("title")}</s-heading>
       <s-stack gap="base">
-        <s-number-field
-          label={i18n.translate("labels.ipad")}
-          name="ipadPercentage"
-          value={String(values.ipadPercentage)}
-          defaultValue={String(initialValues.ipadPercentage)}
-          min={0}
-          max={100}
-          suffix="%"
-          onChange={(event) => onChange("ipadPercentage", event.currentTarget.value)}
-        />
-        <s-number-field
-          label={i18n.translate("labels.mac")}
-          name="macPercentage"
-          value={String(values.macPercentage)}
-          defaultValue={String(initialValues.macPercentage)}
-          min={0}
-          max={100}
-          suffix="%"
-          onChange={(event) => onChange("macPercentage", event.currentTarget.value)}
-        />
-        <s-number-field
-          label={i18n.translate("labels.accessories")}
-          name="accessoriesPercentage"
-          value={String(values.accessoriesPercentage)}
-          defaultValue={String(initialValues.accessoriesPercentage)}
-          min={0}
-          max={100}
-          suffix="%"
-          onChange={(event) =>
-            onChange("accessoriesPercentage", event.currentTarget.value)
-          }
-        />
+        <s-stack direction="inline" gap="base">
+          <s-number-field
+            label={i18n.translate("labels.ipad")}
+            name="ipadPercentage"
+            value={String(values.ipadPercentage)}
+            defaultValue={String(initialValues.ipadPercentage)}
+            min={0}
+            max={100}
+            suffix="%"
+            onChange={(event) => onChange("ipadPercentage", event.currentTarget.value)}
+          />
+          <s-number-field
+            label={i18n.translate("labels.mac")}
+            name="macPercentage"
+            value={String(values.macPercentage)}
+            defaultValue={String(initialValues.macPercentage)}
+            min={0}
+            max={100}
+            suffix="%"
+            onChange={(event) => onChange("macPercentage", event.currentTarget.value)}
+          />
+          <s-number-field
+            label={i18n.translate("labels.accessories")}
+            name="accessoriesPercentage"
+            value={String(values.accessoriesPercentage)}
+            defaultValue={String(initialValues.accessoriesPercentage)}
+            min={0}
+            max={100}
+            suffix="%"
+            onChange={(event) =>
+              onChange("accessoriesPercentage", event.currentTarget.value)
+            }
+          />
+        </s-stack>
+        <s-stack direction="inline" gap="base">
+          <s-number-field
+            label={i18n.translate("labels.iphone")}
+            name="iphonePercentage"
+            value={String(values.iphonePercentage)}
+            defaultValue={String(initialValues.iphonePercentage)}
+            min={0}
+            max={100}
+            suffix="%"
+            onChange={(event) => onChange("iphonePercentage", event.currentTarget.value)}
+          />
+          <s-number-field
+            label={i18n.translate("labels.appleWatch")}
+            name="appleWatchPercentage"
+            value={String(values.appleWatchPercentage)}
+            defaultValue={String(initialValues.appleWatchPercentage)}
+            min={0}
+            max={100}
+            suffix="%"
+            onChange={(event) =>
+              onChange("appleWatchPercentage", event.currentTarget.value)
+            }
+          />
+          <s-number-field
+            label={i18n.translate("labels.tvHome")}
+            name="tvHomePercentage"
+            value={String(values.tvHomePercentage)}
+            defaultValue={String(initialValues.tvHomePercentage)}
+            min={0}
+            max={100}
+            suffix="%"
+            onChange={(event) => onChange("tvHomePercentage", event.currentTarget.value)}
+          />
+        </s-stack>
+        <s-stack direction="inline" gap="base">
+          <s-number-field
+            label={i18n.translate("labels.airpods")}
+            name="airpodsPercentage"
+            value={String(values.airpodsPercentage)}
+            defaultValue={String(initialValues.airpodsPercentage)}
+            min={0}
+            max={100}
+            suffix="%"
+            onChange={(event) => onChange("airpodsPercentage", event.currentTarget.value)}
+          />
+        </s-stack>
       </s-stack>
     </s-function-settings>
   );
@@ -97,6 +149,13 @@ function parseConfig(value) {
         parsed.accessoriesPercentage,
         DEFAULTS.accessoriesPercentage,
       ),
+      iphonePercentage: clampPercentage(parsed.iphonePercentage, DEFAULTS.iphonePercentage),
+      appleWatchPercentage: clampPercentage(
+        parsed.appleWatchPercentage,
+        DEFAULTS.appleWatchPercentage,
+      ),
+      tvHomePercentage: clampPercentage(parsed.tvHomePercentage, DEFAULTS.tvHomePercentage),
+      airpodsPercentage: clampPercentage(parsed.airpodsPercentage, DEFAULTS.airpodsPercentage),
     };
   } catch {
     return DEFAULTS;
