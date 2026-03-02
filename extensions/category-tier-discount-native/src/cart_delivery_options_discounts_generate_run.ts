@@ -3,5 +3,6 @@ import {DeliveryInput, CartDeliveryOptionsDiscountsGenerateRunResult} from "../g
 export function cartDeliveryOptionsDiscountsGenerateRun(
   _input: DeliveryInput,
 ): CartDeliveryOptionsDiscountsGenerateRunResult {
+  void _input;
   return {operations: []};
 }

@@ -8,6 +8,15 @@ const JSON_HEADERS = {
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 
+type GraphqlClient = {
+  graphql: (query: string, opts?: { variables?: Record<string, unknown> }) => Promise<Response>;
+};
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 function json(data: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(data), {
     ...init,
@@ -38,19 +47,19 @@ async function handle(request: Request) {
   try {
     await authenticate.public.appProxy(request);
     proxyVerified = true;
-  } catch (e: any) {
-    console.warn("[create-discount-live] appProxy signature invalid, continuing as direct request:", e?.message ?? e);
+  } catch (e: unknown) {
+    console.warn("[create-discount-live] appProxy signature invalid, continuing as direct request:", errorMessage(e));
   }
 
   if (!shop) {
     return json({ ok: false, error: "Missing shop parameter." }, { status: 400 });
   }
 
-  let admin: any;
+  let admin: GraphqlClient;
   let via: "offline_session" | "session_token" = "offline_session";
   try {
     ({ admin } = await unauthenticated.admin(shop));
-  } catch (e: any) {
+  } catch (e: unknown) {
     const offlineSession = await prisma.session.findFirst({
       where: { shop, isOnline: false },
     });
@@ -59,7 +68,7 @@ async function handle(request: Request) {
     if (sessionAccessToken) {
       via = "session_token";
       admin = {
-        graphql: async (query: string, opts: any = {}) =>
+        graphql: async (query: string, opts: { variables?: Record<string, unknown> } = {}) =>
           fetch(`https://${shop}/admin/api/2026-01/graphql.json`, {
             method: "POST",
             headers: {
@@ -73,7 +82,7 @@ async function handle(request: Request) {
       console.error("[create-discount-live] no usable offline session token", {
         shop,
         liveShop,
-        detail: String(e?.message ?? e),
+        detail: errorMessage(e),
       });
       return json(
         {
@@ -115,9 +124,10 @@ async function handle(request: Request) {
     );
 
     const bodyText = await result.text();
-    let body: any = null;
+    let body: Record<string, unknown> | null = null;
     try {
-      body = JSON.parse(bodyText);
+      const parsed = JSON.parse(bodyText) as unknown;
+      body = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
     } catch {
       body = null;
     }
@@ -127,15 +137,17 @@ async function handle(request: Request) {
       return json({ ok: false, error: "Admin API HTTP error", status: result.status, body: body ?? bodyText }, { status });
     }
 
-    const userErrors = body?.data?.discountCodeBasicCreate?.userErrors ?? [];
+    const userErrors =
+      (body as { data?: { discountCodeBasicCreate?: { userErrors?: unknown[] } } } | null)?.data
+        ?.discountCodeBasicCreate?.userErrors ?? [];
     if (userErrors.length) {
       return json({ ok: false, userErrors }, { status: 400 });
     }
 
     return json({ ok: true, code, via, proxyVerified });
-  } catch (e: any) {
-    console.error("[create-discount-live] graphql exception:", e?.stack ?? e);
-    return json({ ok: false, error: "Failed to create discount code.", detail: String(e?.message ?? e) }, { status: 502 });
+  } catch (e: unknown) {
+    console.error("[create-discount-live] graphql exception:", e);
+    return json({ ok: false, error: "Failed to create discount code.", detail: errorMessage(e) }, { status: 502 });
   }
 }
 
