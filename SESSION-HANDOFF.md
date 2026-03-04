@@ -1,7 +1,4 @@
-## Session Handoff (2026-02-19)
-
-### Trigger
-- If user says `tama tama sadiki`, resume this exact project flow immediately.
+## Session Handoff (2026-03-04)
 
 ### Project
 - Repo: `C:\Windows\System32\student-discount`
@@ -10,39 +7,38 @@
 - Live app: `https://apple-portal.onrender.com`
 - Live shop: `7shdka-4d.myshopify.com`
 
-### Current architecture
-- Discount route:
+### Current behavior
+- Discount creation route:
   - `app/routes/create-discount-live.ts`
-  - `app/routes/create-discount.ts` re-exports live route
-  - `app/routes/proxy.create-discount.ts` re-exports live route
-- Behavior target:
-  - Create a new discount code on each visit
-  - No generic 500 behavior; return structured JSON errors
-- Auth path:
-  - First tries `unauthenticated.admin(shop)`
-  - Fallback uses offline session token from Prisma `Session` table
-  - Does not require `SHOPIFY_ADMIN_TOKEN`
+  - `app/routes/create-discount.ts` re-export
+  - `app/routes/proxy.create-discount.ts` re-export
+- Returns structured JSON errors (no generic 500 masking).
+- Supports admin auth fallback path when session context is missing.
 
-### Database state
-- Migrated to Postgres:
-  - `prisma/schema.prisma` uses `provider = "postgresql"` and `DATABASE_URL`
-  - Migrations updated for Postgres SQL compatibility
-- Render now needs `DATABASE_URL` set to Render Postgres internal URL.
+### Important fixes shipped
+- Hardened `create-discount-live` typing/error handling and auth fallback.
+- Lint/typecheck cleanup for extension workspace handling.
+- Live test script improved:
+  - `scripts/test-live-discount.mjs`
+  - tries Admin token path, then live-route fallback.
+- Deploy blocker fix for stale failed migration record:
+  - `package.json` setup now runs:
+  - `prisma migrate resolve --rolled-back 20260226143000_add_portal_user_table || true`
+  - then `prisma migrate deploy`
 
-### Deployment flow
-- Preferred deployment: push to `main` and let Render auto-deploy.
-- If live output seems old, Render has not completed deployment yet.
+### Known operational gotchas
+- If token lacks `write_discounts`, discount create fails with access denied.
+- If stale failed migration exists in DB history, deploy fails with `P3009` unless resolved.
+- If offline session/token is missing, route may require reinstall/open-in-admin reauth flow.
 
-### Verification commands
-- Health check:
-  - `curl -i "https://apple-portal.onrender.com/proxy/ping"`
-- Discount route:
+### Quick verify
+- Typecheck/lint:
+  - `npm run typecheck`
+  - `npm run lint`
+- Live discount smoke:
+  - `npm run test:live-discount`
+- Live route direct:
   - `curl -i "https://apple-portal.onrender.com/create-discount?shop=7shdka-4d.myshopify.com"`
-- Postgres table checks (Render psql):
-  - `\dt`
-  - `select count(*) from "Session";`
-  - `select count(*) from "StudentDiscount";`
+- Proxy ping:
+  - `curl -i "https://apple-portal.onrender.com/proxy/ping"`
 
-### Known failure modes
-- If no offline session exists in DB, discount creation returns 401 until app is opened/reinstalled in Shopify Admin.
-- If Render has not deployed latest commit, endpoint responses will reflect old code.
