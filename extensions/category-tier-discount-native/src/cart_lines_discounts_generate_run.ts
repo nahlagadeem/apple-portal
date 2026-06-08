@@ -1,5 +1,4 @@
 import {
-  DiscountClass,
   ProductDiscountSelectionStrategy,
   CartInput,
   CartLinesDiscountsGenerateRunResult,
@@ -12,8 +11,25 @@ type TierConfig = {
   iphonePercentage: number;
   appleWatchPercentage: number;
   tvHomePercentage: number;
-  airpodsPercentage: number;
 };
+
+type RuleConfig = Partial<TierConfig> & {
+  rules?: {
+    instituteKey?: string;
+    categoryKey?: string;
+    percentage?: number;
+  }[];
+};
+
+type MatchedRule = {
+  categoryKey: string;
+  percentage: number;
+};
+
+type ProductLineProduct = Extract<
+  CartInput["cart"]["lines"][number]["merchandise"],
+  { __typename: "ProductVariant" }
+>["product"];
 
 const DEFAULT_CONFIG: TierConfig = {
   ipadPercentage: 8,
@@ -22,7 +38,6 @@ const DEFAULT_CONFIG: TierConfig = {
   iphonePercentage: 0,
   appleWatchPercentage: 0,
   tvHomePercentage: 0,
-  airpodsPercentage: 0,
 };
 
 function clampPercentage(value: unknown, fallback: number): number {
@@ -33,24 +48,82 @@ function clampPercentage(value: unknown, fallback: number): number {
   return numberValue;
 }
 
-function readTierConfig(input: CartInput): TierConfig {
-  const rawValue = input.discount.metafield?.value;
-  if (!rawValue) return DEFAULT_CONFIG;
-
+function parseConfig(rawValue: string | undefined | null): RuleConfig {
   try {
-    const parsed = JSON.parse(rawValue) as Partial<TierConfig>;
-    return {
-      ipadPercentage: clampPercentage(parsed.ipadPercentage, DEFAULT_CONFIG.ipadPercentage),
-      macPercentage: clampPercentage(parsed.macPercentage, DEFAULT_CONFIG.macPercentage),
-      accessoriesPercentage: clampPercentage(parsed.accessoriesPercentage, DEFAULT_CONFIG.accessoriesPercentage),
-      iphonePercentage: clampPercentage(parsed.iphonePercentage, DEFAULT_CONFIG.iphonePercentage),
-      appleWatchPercentage: clampPercentage(parsed.appleWatchPercentage, DEFAULT_CONFIG.appleWatchPercentage),
-      tvHomePercentage: clampPercentage(parsed.tvHomePercentage, DEFAULT_CONFIG.tvHomePercentage),
-      airpodsPercentage: clampPercentage(parsed.airpodsPercentage, DEFAULT_CONFIG.airpodsPercentage),
-    };
+    return JSON.parse(String(rawValue || "{}")) as RuleConfig;
   } catch {
-    return DEFAULT_CONFIG;
+    return {};
   }
+}
+
+function readTierConfig(config: RuleConfig): TierConfig {
+  return {
+    ipadPercentage: clampPercentage(config.ipadPercentage, DEFAULT_CONFIG.ipadPercentage),
+    macPercentage: clampPercentage(config.macPercentage, DEFAULT_CONFIG.macPercentage),
+    accessoriesPercentage: clampPercentage(config.accessoriesPercentage, DEFAULT_CONFIG.accessoriesPercentage),
+    iphonePercentage: clampPercentage(config.iphonePercentage, DEFAULT_CONFIG.iphonePercentage),
+    appleWatchPercentage: clampPercentage(config.appleWatchPercentage, DEFAULT_CONFIG.appleWatchPercentage),
+    tvHomePercentage: clampPercentage(config.tvHomePercentage, DEFAULT_CONFIG.tvHomePercentage),
+  };
+}
+
+function getBuyerInstituteKey(input: CartInput): string {
+  return String(input.cart.buyerIdentity?.customer?.metafield?.value || "").trim();
+}
+
+function isCollectionMember(memberships: { isMember: boolean }[]): boolean {
+  return memberships.some((membership) => membership.isMember);
+}
+
+function readRuleConfig(input: CartInput, config: RuleConfig): MatchedRule[] {
+  if (!Array.isArray(config.rules)) return [];
+
+  const buyerInstituteKey = getBuyerInstituteKey(input);
+  if (!buyerInstituteKey) return [];
+
+  return config.rules
+    .filter((rule) => String(rule.instituteKey || "").trim() === buyerInstituteKey)
+    .map((rule) => ({
+      categoryKey: String(rule.categoryKey || "").trim(),
+      percentage: clampPercentage(rule.percentage, 0),
+    }))
+    .filter((rule) => rule.categoryKey && rule.percentage > 0);
+}
+
+function getLinePercentageFromRules(product: ProductLineProduct, rules: MatchedRule[]): number {
+  let maxPercentage = 0;
+
+  for (const rule of rules) {
+    const isMatch =
+      (rule.categoryKey === "ipad" && isCollectionMember(product.ipad)) ||
+      (rule.categoryKey === "mac" && isCollectionMember(product.mac)) ||
+      (rule.categoryKey === "accessories" && isCollectionMember(product.accessories)) ||
+      (rule.categoryKey === "iphone" && isCollectionMember(product.iphone)) ||
+      (rule.categoryKey === "apple-watch" && isCollectionMember(product.appleWatch)) ||
+      (rule.categoryKey === "tv-home" && isCollectionMember(product.tvHome));
+
+    if (isMatch) {
+      maxPercentage = Math.max(maxPercentage, rule.percentage);
+    }
+  }
+
+  return maxPercentage;
+}
+
+function getLinePercentage(input: CartInput, product: ProductLineProduct, config: RuleConfig): number {
+  const rules = readRuleConfig(input, config);
+  if (rules.length) return getLinePercentageFromRules(product, rules);
+
+  const tierConfig = readTierConfig(config);
+  return Math.max(
+    isCollectionMember(product.mac) ? tierConfig.macPercentage : 0,
+    isCollectionMember(product.ipad) ? tierConfig.ipadPercentage : 0,
+    isCollectionMember(product.accessories) ? tierConfig.accessoriesPercentage : 0,
+    isCollectionMember(product.iphone) ? tierConfig.iphonePercentage : 0,
+    isCollectionMember(product.appleWatch) ? tierConfig.appleWatchPercentage : 0,
+    isCollectionMember(product.tvHome) ? tierConfig.tvHomePercentage : 0,
+    0,
+  );
 }
 
 export function cartLinesDiscountsGenerateRun(
@@ -68,30 +141,24 @@ export function cartLinesDiscountsGenerateRun(
     return {operations: []};
   }
 
-  const config = readTierConfig(input);
-  const productLinesByPercent: Record<number, {id: string; quantity: number}[]> =
+  const codeConfig = parseConfig(input.discount.discountConfig?.value);
+  const automaticConfig = parseConfig(input.discount.automaticConfig?.value);
+  const productLinesByPercent: Record<number, {id: string}[]> =
     {};
 
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename !== "ProductVariant") continue;
 
     const product = line.merchandise.product;
-    const percentage = Math.max(
-      product.mac.some((membership) => membership.isMember) ? config.macPercentage : 0,
-      product.ipad.some((membership) => membership.isMember) ? config.ipadPercentage : 0,
-      product.accessories.some((membership) => membership.isMember) ? config.accessoriesPercentage : 0,
-      product.iphone.some((membership) => membership.isMember) ? config.iphonePercentage : 0,
-      product.appleWatch.some((membership) => membership.isMember) ? config.appleWatchPercentage : 0,
-      product.tvHome.some((membership) => membership.isMember) ? config.tvHomePercentage : 0,
-      product.airpods.some((membership) => membership.isMember) ? config.airpodsPercentage : 0,
-      0,
-    );
+    if (getLinePercentage(input, product, automaticConfig) > 0) continue;
+
+    const percentage = getLinePercentage(input, product, codeConfig);
 
     if (percentage <= 0) continue;
     if (!productLinesByPercent[percentage]) {
       productLinesByPercent[percentage] = [];
     }
-    productLinesByPercent[percentage].push({id: line.id, quantity: line.quantity});
+    productLinesByPercent[percentage].push({id: line.id});
   }
 
   const candidates = Object.entries(productLinesByPercent).map(
@@ -100,7 +167,6 @@ export function cartLinesDiscountsGenerateRun(
       targets: lines.map((line) => ({
         cartLine: {
           id: line.id,
-          quantity: line.quantity,
         },
       })),
       value: {

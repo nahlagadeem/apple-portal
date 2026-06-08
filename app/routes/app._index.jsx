@@ -269,7 +269,7 @@ export const action = async ({ request }) => {
       discountClasses: ["PRODUCT"],
       combinesWith: {
         orderDiscounts: false,
-        productDiscounts: false,
+        productDiscounts: true,
         shippingDiscounts: false,
       },
       metafields: [
