@@ -405,15 +405,19 @@ export const action = async ({ request }) => {
 
 function buildInitialRulePercentages(config, collections) {
   const byCollectionId = {};
+  const safeCollections = Array.isArray(collections) ? collections : [];
+  const rules = Array.isArray(config?.rules) ? config.rules : [];
 
-  for (const rule of config?.rules ?? []) {
-    byCollectionId[rule.collectionId] = rule.percentage;
+  for (const rule of rules) {
+    const collectionId = String(rule?.collectionId || "").trim();
+    if (!collectionId) continue;
+    byCollectionId[collectionId] = clampPercentage(rule?.percentage, 0);
   }
 
   if (Object.keys(byCollectionId).length) return byCollectionId;
 
   for (const field of LEGACY_COLLECTION_FIELDS) {
-    if (collections.some((collection) => collection.id === field.collectionId)) {
+    if (safeCollections.some((collection) => collection?.id === field.collectionId)) {
       byCollectionId[field.collectionId] = config?.[field.key] ?? field.defaultPercentage;
     }
   }
@@ -422,17 +426,32 @@ function buildInitialRulePercentages(config, collections) {
 }
 
 function buildRules(collections, rulePercentages) {
-  return collections
-    .map((collection) => ({
-      collectionId: collection.id,
-      collectionTitle: collection.title,
-      percentage: clampPercentage(rulePercentages[collection.id], 0),
-    }))
-    .filter((rule) => rule.percentage > 0);
+  const safeCollections = Array.isArray(collections) ? collections : [];
+
+  return safeCollections
+    .map((collection) => {
+      const collectionId = String(collection?.id || "").trim();
+      if (!collectionId) return null;
+
+      return {
+        collectionId,
+        collectionTitle: String(collection?.title || "").trim(),
+        percentage: clampPercentage(rulePercentages?.[collectionId], 0),
+      };
+    })
+    .filter((rule) => rule?.percentage > 0);
+}
+
+function getFieldValue(event) {
+  return event?.target?.value ?? event?.currentTarget?.value ?? "";
 }
 
 export default function Index() {
-  const { existing, collections, unavailable } = useLoaderData();
+  const loaderData = useLoaderData() || {};
+  const { existing = null, collections: loaderCollections = [], unavailable = false } = loaderData;
+  const collections = Array.isArray(loaderCollections)
+    ? loaderCollections.filter((collection) => collection?.id)
+    : [];
   const fetcher = useFetcher();
   const shopify = useAppBridge();
 
@@ -514,12 +533,12 @@ export default function Index() {
             label="Discount code"
             value={code}
             disabled={isEdit}
-            onChange={(event) => setCode(String(event.currentTarget.value || "").toUpperCase())}
+            onChange={(event) => setCode(String(getFieldValue(event)).toUpperCase())}
           />
 
-          {(collections ?? []).length ? (
+          {collections.length ? (
             <s-stack gap="base">
-              {(collections ?? []).map((collection) => (
+              {collections.map((collection) => (
                 <s-number-field
                   key={collection.id}
                   label={`${collection.title} %`}
@@ -532,7 +551,7 @@ export default function Index() {
                     setRulePercentages((previous) => ({
                       ...previous,
                       [collection.id]: clampPercentage(
-                        event.currentTarget.value,
+                        getFieldValue(event),
                         previous[collection.id] ?? 0,
                       ),
                     }))
@@ -550,7 +569,7 @@ export default function Index() {
                 value={String(ipadPercentage)}
                 disabled={isEdit}
                 onChange={(event) =>
-                  setIpadPercentage(clampPercentage(event.currentTarget.value, ipadPercentage))
+                  setIpadPercentage(clampPercentage(getFieldValue(event), ipadPercentage))
                 }
               />
               <s-number-field
@@ -561,7 +580,7 @@ export default function Index() {
                 value={String(macPercentage)}
                 disabled={isEdit}
                 onChange={(event) =>
-                  setMacPercentage(clampPercentage(event.currentTarget.value, macPercentage))
+                  setMacPercentage(clampPercentage(getFieldValue(event), macPercentage))
                 }
               />
               <s-number-field
@@ -573,7 +592,7 @@ export default function Index() {
                 disabled={isEdit}
                 onChange={(event) =>
                   setAccessoriesPercentage(
-                    clampPercentage(event.currentTarget.value, accessoriesPercentage),
+                    clampPercentage(getFieldValue(event), accessoriesPercentage),
                   )
                 }
               />
@@ -585,7 +604,7 @@ export default function Index() {
                 value={String(iphonePercentage)}
                 disabled={isEdit}
                 onChange={(event) =>
-                  setIphonePercentage(clampPercentage(event.currentTarget.value, iphonePercentage))
+                  setIphonePercentage(clampPercentage(getFieldValue(event), iphonePercentage))
                 }
               />
               <s-number-field
@@ -597,7 +616,7 @@ export default function Index() {
                 disabled={isEdit}
                 onChange={(event) =>
                   setAppleWatchPercentage(
-                    clampPercentage(event.currentTarget.value, appleWatchPercentage),
+                    clampPercentage(getFieldValue(event), appleWatchPercentage),
                   )
                 }
               />
@@ -609,7 +628,7 @@ export default function Index() {
                 value={String(tvHomePercentage)}
                 disabled={isEdit}
                 onChange={(event) =>
-                  setTvHomePercentage(clampPercentage(event.currentTarget.value, tvHomePercentage))
+                  setTvHomePercentage(clampPercentage(getFieldValue(event), tvHomePercentage))
                 }
               />
               <s-number-field
@@ -620,7 +639,7 @@ export default function Index() {
                 value={String(airpodsPercentage)}
                 disabled={isEdit}
                 onChange={(event) =>
-                  setAirpodsPercentage(clampPercentage(event.currentTarget.value, airpodsPercentage))
+                  setAirpodsPercentage(clampPercentage(getFieldValue(event), airpodsPercentage))
                 }
               />
             </s-stack>
