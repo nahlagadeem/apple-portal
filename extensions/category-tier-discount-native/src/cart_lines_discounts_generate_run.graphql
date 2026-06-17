@@ -9,6 +9,22 @@ query CartInput($collectionIds: [ID!] = []) {
     }
     lines {
       id
+      parentRelationship {
+        parent {
+          id
+          merchandise {
+            __typename
+            ... on ProductVariant {
+              product {
+                dynamicCollections: inCollections(ids: $collectionIds) {
+                  collectionId
+                  isMember
+                }
+              }
+            }
+          }
+        }
+      }
       merchandise {
         __typename
         ... on ProductVariant {

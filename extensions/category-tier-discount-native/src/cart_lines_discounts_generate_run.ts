@@ -35,6 +35,8 @@ type ProductLineProduct = Extract<
   { __typename: "ProductVariant" }
 >["product"];
 
+type CartLine = CartInput["cart"]["lines"][number];
+
 const DEFAULT_CONFIG: TierConfig = {
   ipadPercentage: 8,
   macPercentage: 13,
@@ -75,9 +77,11 @@ function getBuyerInstituteKey(input: CartInput): string {
   return String(input.cart.buyerIdentity?.customer?.metafield?.value || "").trim();
 }
 
-function isCollectionMember(memberships: boolean | { isMember: boolean }[]): boolean {
+function isCollectionMember(memberships: unknown): boolean {
   if (typeof memberships === "boolean") return memberships;
-  return memberships.some((membership) => membership.isMember);
+  if (!Array.isArray(memberships)) return false;
+
+  return memberships.some((membership) => Boolean(membership?.isMember));
 }
 
 function readRuleConfig(input: CartInput, config: RuleConfig): MatchedRule[] {
@@ -150,6 +154,25 @@ function getLinePercentage(input: CartInput, product: ProductLineProduct, config
   );
 }
 
+function getParentProduct(line: CartLine): ProductLineProduct | null {
+  const parentMerchandise = line.parentRelationship?.parent?.merchandise;
+  if (parentMerchandise?.__typename !== "ProductVariant") return null;
+
+  return parentMerchandise.product as ProductLineProduct;
+}
+
+function getCartLinePercentage(input: CartInput, line: CartLine, config: RuleConfig): number {
+  if (line.merchandise.__typename !== "ProductVariant") return 0;
+
+  const productPercentage = getLinePercentage(input, line.merchandise.product, config);
+  if (productPercentage > 0) return productPercentage;
+
+  const parentProduct = getParentProduct(line);
+  if (!parentProduct) return 0;
+
+  return getLinePercentage(input, parentProduct, config);
+}
+
 export function cartLinesDiscountsGenerateRun(
   input: CartInput,
 ): CartLinesDiscountsGenerateRunResult {
@@ -173,10 +196,9 @@ export function cartLinesDiscountsGenerateRun(
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename !== "ProductVariant") continue;
 
-    const product = line.merchandise.product;
-    if (getLinePercentage(input, product, automaticConfig) > 0) continue;
+    if (getCartLinePercentage(input, line, automaticConfig) > 0) continue;
 
-    const percentage = getLinePercentage(input, product, codeConfig);
+    const percentage = getCartLinePercentage(input, line, codeConfig);
 
     if (percentage <= 0) continue;
     if (!productLinesByPercent[percentage]) {
