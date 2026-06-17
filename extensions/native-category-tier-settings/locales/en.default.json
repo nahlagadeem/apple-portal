@@ -9,7 +9,8 @@
     "iphone": "iPhone percentage",
     "appleWatch": "Apple Watch percentage",
     "tvHome": "TV & Home percentage",
-    "airpods": "AirPods percentage"
+    "airpods": "AirPods percentage",
+    "percentageSuffix": "percentage"
   }
 }
 

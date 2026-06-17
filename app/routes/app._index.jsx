@@ -14,6 +14,45 @@ const DEFAULT_CONFIG = {
   airpodsPercentage: 0,
 };
 
+const LEGACY_COLLECTION_FIELDS = [
+  {
+    key: "ipadPercentage",
+    collectionId: "gid://shopify/Collection/452991221978",
+    title: "iPad",
+    defaultPercentage: DEFAULT_CONFIG.ipadPercentage,
+  },
+  {
+    key: "macPercentage",
+    collectionId: "gid://shopify/Collection/452991746266",
+    title: "Mac",
+    defaultPercentage: DEFAULT_CONFIG.macPercentage,
+  },
+  {
+    key: "accessoriesPercentage",
+    collectionId: "gid://shopify/Collection/453527797978",
+    title: "Accessories",
+    defaultPercentage: DEFAULT_CONFIG.accessoriesPercentage,
+  },
+  {
+    key: "iphonePercentage",
+    collectionId: "gid://shopify/Collection/452991123674",
+    title: "iPhone",
+    defaultPercentage: DEFAULT_CONFIG.iphonePercentage,
+  },
+  {
+    key: "appleWatchPercentage",
+    collectionId: "gid://shopify/Collection/52991287514",
+    title: "Apple Watch",
+    defaultPercentage: DEFAULT_CONFIG.appleWatchPercentage,
+  },
+  {
+    key: "tvHomePercentage",
+    collectionId: "gid://shopify/Collection/453560008922",
+    title: "TV & Home",
+    defaultPercentage: DEFAULT_CONFIG.tvHomePercentage,
+  },
+];
+
 function clampPercentage(value, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -22,10 +61,30 @@ function clampPercentage(value, fallback) {
   return parsed;
 }
 
+function normalizeRules(rawRules) {
+  if (!Array.isArray(rawRules)) return [];
+
+  return rawRules
+    .map((rule) => ({
+      collectionId: String(rule?.collectionId || "").trim(),
+      collectionTitle: String(rule?.collectionTitle || "").trim(),
+      percentage: clampPercentage(rule?.percentage, 0),
+    }))
+    .filter((rule) => rule.collectionId && rule.percentage > 0);
+}
+
+function parseRulesInput(rawValue) {
+  try {
+    return normalizeRules(JSON.parse(String(rawValue || "[]")));
+  } catch {
+    return [];
+  }
+}
+
 function parseConfig(raw) {
   try {
     const parsed = JSON.parse(raw || "{}");
-    return {
+    const legacyConfig = {
       ipadPercentage: clampPercentage(parsed.ipadPercentage, DEFAULT_CONFIG.ipadPercentage),
       macPercentage: clampPercentage(parsed.macPercentage, DEFAULT_CONFIG.macPercentage),
       accessoriesPercentage: clampPercentage(
@@ -40,8 +99,14 @@ function parseConfig(raw) {
       tvHomePercentage: clampPercentage(parsed.tvHomePercentage, DEFAULT_CONFIG.tvHomePercentage),
       airpodsPercentage: clampPercentage(parsed.airpodsPercentage, DEFAULT_CONFIG.airpodsPercentage),
     };
+    const rules = normalizeRules(parsed.rules);
+    return {
+      ...legacyConfig,
+      rules,
+      collectionIds: rules.map((rule) => rule.collectionId),
+    };
   } catch {
-    return DEFAULT_CONFIG;
+    return { ...DEFAULT_CONFIG, rules: [], collectionIds: [] };
   }
 }
 
@@ -58,6 +123,44 @@ async function runGraphql(admin, query, variables = {}) {
   const response = await admin.graphql(query, { variables });
   const json = await response.json();
   return { response, json };
+}
+
+async function fetchCollections(admin) {
+  const query = `#graphql
+    query Collections($cursor: String) {
+      collections(first: 250, after: $cursor, sortKey: TITLE) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          id
+          title
+          handle
+        }
+      }
+    }
+  `;
+
+  const collections = [];
+  let cursor = null;
+
+  do {
+    const result = await runGraphql(admin, query, { cursor });
+    if (!result.response.ok || result.json?.errors?.length) break;
+
+    const connection = result.json?.data?.collections;
+    collections.push(
+      ...(connection?.nodes ?? []).map((collection) => ({
+        id: String(collection?.id || "").trim(),
+        title: String(collection?.title || "").trim(),
+        handle: String(collection?.handle || "").trim(),
+      })),
+    );
+    cursor = connection?.pageInfo?.hasNextPage ? connection.pageInfo.endCursor : null;
+  } while (cursor);
+
+  return collections.filter((collection) => collection.id && collection.title);
 }
 
 async function resolveDiscountFunction(admin) {
@@ -177,7 +280,7 @@ export const loader = async ({ request }) => {
   try {
     ({ admin } = await authenticate.admin(request));
   } catch {
-    return { existing: null, unavailable: true };
+    return { existing: null, collections: [], unavailable: true };
   }
   const url = new URL(request.url);
   const discountNodeId = normalizeDiscountNodeId(
@@ -187,7 +290,8 @@ export const loader = async ({ request }) => {
   );
 
   const existing = await fetchExistingDiscount(admin, discountNodeId);
-  return { existing, unavailable: false };
+  const collections = await fetchCollections(admin);
+  return { existing, collections, unavailable: false };
 };
 
 export const action = async ({ request }) => {
@@ -218,6 +322,9 @@ export const action = async ({ request }) => {
       DEFAULT_CONFIG.airpodsPercentage,
     ),
   };
+  const rules = parseRulesInput(formData.get("rules"));
+  config.rules = rules;
+  config.collectionIds = rules.map((rule) => rule.collectionId);
 
   if (!code) {
     return { ok: false, error: "Please enter a discount code." };
@@ -296,8 +403,36 @@ export const action = async ({ request }) => {
   };
 };
 
+function buildInitialRulePercentages(config, collections) {
+  const byCollectionId = {};
+
+  for (const rule of config?.rules ?? []) {
+    byCollectionId[rule.collectionId] = rule.percentage;
+  }
+
+  if (Object.keys(byCollectionId).length) return byCollectionId;
+
+  for (const field of LEGACY_COLLECTION_FIELDS) {
+    if (collections.some((collection) => collection.id === field.collectionId)) {
+      byCollectionId[field.collectionId] = config?.[field.key] ?? field.defaultPercentage;
+    }
+  }
+
+  return byCollectionId;
+}
+
+function buildRules(collections, rulePercentages) {
+  return collections
+    .map((collection) => ({
+      collectionId: collection.id,
+      collectionTitle: collection.title,
+      percentage: clampPercentage(rulePercentages[collection.id], 0),
+    }))
+    .filter((rule) => rule.percentage > 0);
+}
+
 export default function Index() {
-  const { existing, unavailable } = useLoaderData();
+  const { existing, collections, unavailable } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
 
@@ -325,6 +460,9 @@ export default function Index() {
   const [airpodsPercentage, setAirpodsPercentage] = useState(
     existing?.config?.airpodsPercentage ?? DEFAULT_CONFIG.airpodsPercentage,
   );
+  const [rulePercentages, setRulePercentages] = useState(() =>
+    buildInitialRulePercentages(existing?.config, collections ?? []),
+  );
 
   const isEdit = Boolean(discountNodeId);
   const isSubmitting =
@@ -342,6 +480,7 @@ export default function Index() {
 
   const submitForm = () => {
     if (isEdit) return;
+    const rules = buildRules(collections ?? [], rulePercentages);
     const form = new FormData();
     if (discountNodeId) form.set("discountNodeId", discountNodeId);
     form.set("code", code);
@@ -352,6 +491,7 @@ export default function Index() {
     form.set("appleWatchPercentage", String(appleWatchPercentage));
     form.set("tvHomePercentage", String(tvHomePercentage));
     form.set("airpodsPercentage", String(airpodsPercentage));
+    form.set("rules", JSON.stringify(rules));
     fetcher.submit(form, { method: "POST" });
   };
 
@@ -377,95 +517,114 @@ export default function Index() {
             onChange={(event) => setCode(String(event.currentTarget.value || "").toUpperCase())}
           />
 
-          <s-stack direction="inline" gap="base">
-            <s-number-field
-              label="iPad %"
-              min={0}
-              max={100}
-              suffix="%"
-              value={String(ipadPercentage)}
-              disabled={isEdit}
-              onChange={(event) =>
-                setIpadPercentage(clampPercentage(event.currentTarget.value, ipadPercentage))
-              }
-            />
-            <s-number-field
-              label="Mac %"
-              min={0}
-              max={100}
-              suffix="%"
-              value={String(macPercentage)}
-              disabled={isEdit}
-              onChange={(event) =>
-                setMacPercentage(clampPercentage(event.currentTarget.value, macPercentage))
-              }
-            />
-            <s-number-field
-              label="Accessories %"
-              min={0}
-              max={100}
-              suffix="%"
-              value={String(accessoriesPercentage)}
-              disabled={isEdit}
-              onChange={(event) =>
-                setAccessoriesPercentage(
-                  clampPercentage(event.currentTarget.value, accessoriesPercentage),
-                )
-              }
-            />
-          </s-stack>
-
-          <s-stack direction="inline" gap="base">
-            <s-number-field
-              label="iPhone %"
-              min={0}
-              max={100}
-              suffix="%"
-              value={String(iphonePercentage)}
-              disabled={isEdit}
-              onChange={(event) =>
-                setIphonePercentage(clampPercentage(event.currentTarget.value, iphonePercentage))
-              }
-            />
-            <s-number-field
-              label="Apple Watch %"
-              min={0}
-              max={100}
-              suffix="%"
-              value={String(appleWatchPercentage)}
-              disabled={isEdit}
-              onChange={(event) =>
-                setAppleWatchPercentage(
-                  clampPercentage(event.currentTarget.value, appleWatchPercentage),
-                )
-              }
-            />
-            <s-number-field
-              label="TV & Home %"
-              min={0}
-              max={100}
-              suffix="%"
-              value={String(tvHomePercentage)}
-              disabled={isEdit}
-              onChange={(event) =>
-                setTvHomePercentage(clampPercentage(event.currentTarget.value, tvHomePercentage))
-              }
-            />
-          </s-stack>
-
-          <s-stack direction="inline" gap="base">
-            <s-number-field
-              label="AirPods %"
-              min={0}
-              max={100}
-              suffix="%"
-              value={String(airpodsPercentage)}
-              disabled={isEdit}
-              onChange={(event) =>
-                setAirpodsPercentage(clampPercentage(event.currentTarget.value, airpodsPercentage))
-              }
-            />
-          </s-stack>
+          {(collections ?? []).length ? (
+            <s-stack gap="base">
+              {(collections ?? []).map((collection) => (
+                <s-number-field
+                  key={collection.id}
+                  label={`${collection.title} %`}
+                  min={0}
+                  max={100}
+                  suffix="%"
+                  value={String(rulePercentages[collection.id] ?? 0)}
+                  disabled={isEdit}
+                  onChange={(event) =>
+                    setRulePercentages((previous) => ({
+                      ...previous,
+                      [collection.id]: clampPercentage(
+                        event.currentTarget.value,
+                        previous[collection.id] ?? 0,
+                      ),
+                    }))
+                  }
+                />
+              ))}
+            </s-stack>
+          ) : (
+            <s-stack gap="base">
+              <s-number-field
+                label="iPad %"
+                min={0}
+                max={100}
+                suffix="%"
+                value={String(ipadPercentage)}
+                disabled={isEdit}
+                onChange={(event) =>
+                  setIpadPercentage(clampPercentage(event.currentTarget.value, ipadPercentage))
+                }
+              />
+              <s-number-field
+                label="Mac %"
+                min={0}
+                max={100}
+                suffix="%"
+                value={String(macPercentage)}
+                disabled={isEdit}
+                onChange={(event) =>
+                  setMacPercentage(clampPercentage(event.currentTarget.value, macPercentage))
+                }
+              />
+              <s-number-field
+                label="Accessories %"
+                min={0}
+                max={100}
+                suffix="%"
+                value={String(accessoriesPercentage)}
+                disabled={isEdit}
+                onChange={(event) =>
+                  setAccessoriesPercentage(
+                    clampPercentage(event.currentTarget.value, accessoriesPercentage),
+                  )
+                }
+              />
+              <s-number-field
+                label="iPhone %"
+                min={0}
+                max={100}
+                suffix="%"
+                value={String(iphonePercentage)}
+                disabled={isEdit}
+                onChange={(event) =>
+                  setIphonePercentage(clampPercentage(event.currentTarget.value, iphonePercentage))
+                }
+              />
+              <s-number-field
+                label="Apple Watch %"
+                min={0}
+                max={100}
+                suffix="%"
+                value={String(appleWatchPercentage)}
+                disabled={isEdit}
+                onChange={(event) =>
+                  setAppleWatchPercentage(
+                    clampPercentage(event.currentTarget.value, appleWatchPercentage),
+                  )
+                }
+              />
+              <s-number-field
+                label="TV & Home %"
+                min={0}
+                max={100}
+                suffix="%"
+                value={String(tvHomePercentage)}
+                disabled={isEdit}
+                onChange={(event) =>
+                  setTvHomePercentage(clampPercentage(event.currentTarget.value, tvHomePercentage))
+                }
+              />
+              <s-number-field
+                label="AirPods %"
+                min={0}
+                max={100}
+                suffix="%"
+                value={String(airpodsPercentage)}
+                disabled={isEdit}
+                onChange={(event) =>
+                  setAirpodsPercentage(clampPercentage(event.currentTarget.value, airpodsPercentage))
+                }
+              />
+            </s-stack>
+          )}
         </s-stack>
 
         <s-stack direction="inline" gap="base">

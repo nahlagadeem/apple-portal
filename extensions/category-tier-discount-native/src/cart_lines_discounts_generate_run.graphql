@@ -1,4 +1,4 @@
-query CartInput {
+query CartInput($collectionIds: [ID!] = []) {
   cart {
     buyerIdentity {
       customer {
@@ -13,22 +13,12 @@ query CartInput {
         __typename
         ... on ProductVariant {
           product {
-            ipad: inCollections(ids: ["gid://shopify/Collection/452991221978"]) {
-              isMember
-            }
-            mac: inCollections(ids: ["gid://shopify/Collection/452991746266"]) {
-              isMember
-            }
-            accessories: inCollections(ids: ["gid://shopify/Collection/453527797978"]) {
-              isMember
-            }
-            iphone: inCollections(ids: ["gid://shopify/Collection/452991123674"]) {
-              isMember
-            }
-            appleWatch: inCollections(ids: ["gid://shopify/Collection/52991287514"]) {
-              isMember
-            }
-            tvHome: inCollections(ids: ["gid://shopify/Collection/453560008922"]) {
+            ipad: inAnyCollection(ids: ["gid://shopify/Collection/452991221978"])
+            mac: inAnyCollection(ids: ["gid://shopify/Collection/452991746266"])
+            accessories: inAnyCollection(ids: ["gid://shopify/Collection/453527797978"])
+            iphone: inAnyCollection(ids: ["gid://shopify/Collection/452991123674"])
+            dynamicCollections: inCollections(ids: $collectionIds) {
+              collectionId
               isMember
             }
           }
@@ -37,6 +27,7 @@ query CartInput {
     }
   }
   discount {
+    discountClasses
     discountConfig: metafield(
       namespace: "$app:category-tier-discount-native"
       key: "function-configuration"

@@ -14,15 +14,19 @@ type TierConfig = {
 };
 
 type RuleConfig = Partial<TierConfig> & {
+  collectionIds?: string[];
   rules?: {
     instituteKey?: string;
     categoryKey?: string;
+    collectionId?: string;
+    collectionTitle?: string;
     percentage?: number;
   }[];
 };
 
 type MatchedRule = {
-  categoryKey: string;
+  categoryKey?: string;
+  collectionId?: string;
   percentage: number;
 };
 
@@ -71,7 +75,8 @@ function getBuyerInstituteKey(input: CartInput): string {
   return String(input.cart.buyerIdentity?.customer?.metafield?.value || "").trim();
 }
 
-function isCollectionMember(memberships: { isMember: boolean }[]): boolean {
+function isCollectionMember(memberships: boolean | { isMember: boolean }[]): boolean {
+  if (typeof memberships === "boolean") return memberships;
   return memberships.some((membership) => membership.isMember);
 }
 
@@ -79,28 +84,49 @@ function readRuleConfig(input: CartInput, config: RuleConfig): MatchedRule[] {
   if (!Array.isArray(config.rules)) return [];
 
   const buyerInstituteKey = getBuyerInstituteKey(input);
-  if (!buyerInstituteKey) return [];
 
   return config.rules
-    .filter((rule) => String(rule.instituteKey || "").trim() === buyerInstituteKey)
+    .filter((rule) => {
+      const instituteKey = String(rule.instituteKey || "").trim();
+      return !instituteKey || (buyerInstituteKey && instituteKey === buyerInstituteKey);
+    })
     .map((rule) => ({
       categoryKey: String(rule.categoryKey || "").trim(),
+      collectionId: String(rule.collectionId || "").trim(),
       percentage: clampPercentage(rule.percentage, 0),
     }))
-    .filter((rule) => rule.categoryKey && rule.percentage > 0);
+    .filter((rule) => (rule.categoryKey || rule.collectionId) && rule.percentage > 0);
+}
+
+function getDynamicCollectionMemberships(product: ProductLineProduct): {collectionId: string; isMember: boolean}[] {
+  const memberships = (product as ProductLineProduct & {
+    dynamicCollections?: {collectionId?: string; isMember?: boolean}[];
+  }).dynamicCollections;
+
+  if (!Array.isArray(memberships)) return [];
+
+  return memberships
+    .map((membership) => ({
+      collectionId: String(membership.collectionId || "").trim(),
+      isMember: Boolean(membership.isMember),
+    }))
+    .filter((membership) => membership.collectionId);
 }
 
 function getLinePercentageFromRules(product: ProductLineProduct, rules: MatchedRule[]): number {
   let maxPercentage = 0;
+  const dynamicMemberships = getDynamicCollectionMemberships(product);
 
   for (const rule of rules) {
     const isMatch =
+      (rule.collectionId &&
+        dynamicMemberships.some(
+          (membership) => membership.collectionId === rule.collectionId && membership.isMember,
+        )) ||
       (rule.categoryKey === "ipad" && isCollectionMember(product.ipad)) ||
       (rule.categoryKey === "mac" && isCollectionMember(product.mac)) ||
       (rule.categoryKey === "accessories" && isCollectionMember(product.accessories)) ||
-      (rule.categoryKey === "iphone" && isCollectionMember(product.iphone)) ||
-      (rule.categoryKey === "apple-watch" && isCollectionMember(product.appleWatch)) ||
-      (rule.categoryKey === "tv-home" && isCollectionMember(product.tvHome));
+      (rule.categoryKey === "iphone" && isCollectionMember(product.iphone));
 
     if (isMatch) {
       maxPercentage = Math.max(maxPercentage, rule.percentage);
@@ -120,8 +146,6 @@ function getLinePercentage(input: CartInput, product: ProductLineProduct, config
     isCollectionMember(product.ipad) ? tierConfig.ipadPercentage : 0,
     isCollectionMember(product.accessories) ? tierConfig.accessoriesPercentage : 0,
     isCollectionMember(product.iphone) ? tierConfig.iphonePercentage : 0,
-    isCollectionMember(product.appleWatch) ? tierConfig.appleWatchPercentage : 0,
-    isCollectionMember(product.tvHome) ? tierConfig.tvHomePercentage : 0,
     0,
   );
 }
@@ -133,9 +157,9 @@ export function cartLinesDiscountsGenerateRun(
     return {operations: []};
   }
 
-  const hasProductDiscountClass = input.discount.discountClasses.includes(
-    DiscountClass.Product,
-  );
+  const discountClasses =
+    (input.discount as CartInput["discount"] & {discountClasses?: string[]}).discountClasses ?? [];
+  const hasProductDiscountClass = discountClasses.includes("PRODUCT");
 
   if (!hasProductDiscountClass) {
     return {operations: []};
