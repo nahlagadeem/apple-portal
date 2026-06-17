@@ -5,7 +5,7 @@ import { cartLinesDiscountsGenerateRun } from "./cart_lines_discounts_generate_r
 const BUNDLES_COLLECTION_ID = "gid://shopify/Collection/999";
 
 describe("cartLinesDiscountsGenerateRun", () => {
-  test("applies a dynamic collection rule from a bundle parent product", () => {
+  test("applies a dynamic collection rule to a bundle parent product line", () => {
     const input = {
       cart: {
         lines: [
@@ -75,7 +75,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
                 targets: [
                   {
                     cartLine: {
-                      id: "gid://shopify/CartLine/component-1",
+                      id: "gid://shopify/CartLine/bundle-parent",
                     },
                   },
                 ],

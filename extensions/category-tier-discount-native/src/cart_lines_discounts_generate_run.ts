@@ -30,6 +30,11 @@ type MatchedRule = {
   percentage: number;
 };
 
+type CartLineDiscountMatch = {
+  percentage: number;
+  targetLineId: string;
+};
+
 type ProductLineProduct = Extract<
   CartInput["cart"]["lines"][number]["merchandise"],
   { __typename: "ProductVariant" }
@@ -161,16 +166,31 @@ function getParentProduct(line: CartLine): ProductLineProduct | null {
   return parentMerchandise.product as ProductLineProduct;
 }
 
-function getCartLinePercentage(input: CartInput, line: CartLine, config: RuleConfig): number {
-  if (line.merchandise.__typename !== "ProductVariant") return 0;
+function getCartLineDiscountMatch(
+  input: CartInput,
+  line: CartLine,
+  config: RuleConfig,
+): CartLineDiscountMatch | null {
+  if (line.merchandise.__typename !== "ProductVariant") return null;
 
   const productPercentage = getLinePercentage(input, line.merchandise.product, config);
-  if (productPercentage > 0) return productPercentage;
+  if (productPercentage > 0) {
+    return {
+      percentage: productPercentage,
+      targetLineId: line.id,
+    };
+  }
 
   const parentProduct = getParentProduct(line);
-  if (!parentProduct) return 0;
+  if (!parentProduct) return null;
 
-  return getLinePercentage(input, parentProduct, config);
+  const parentPercentage = getLinePercentage(input, parentProduct, config);
+  if (parentPercentage <= 0) return null;
+
+  return {
+    percentage: parentPercentage,
+    targetLineId: line.parentRelationship?.parent?.id || line.id,
+  };
 }
 
 export function cartLinesDiscountsGenerateRun(
@@ -190,29 +210,29 @@ export function cartLinesDiscountsGenerateRun(
 
   const codeConfig = parseConfig(input.discount.discountConfig?.value);
   const automaticConfig = parseConfig(input.discount.automaticConfig?.value);
-  const productLinesByPercent: Record<number, {id: string}[]> =
+  const productLineIdsByPercent: Record<number, Set<string>> =
     {};
 
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename !== "ProductVariant") continue;
 
-    if (getCartLinePercentage(input, line, automaticConfig) > 0) continue;
+    if (getCartLineDiscountMatch(input, line, automaticConfig)) continue;
 
-    const percentage = getCartLinePercentage(input, line, codeConfig);
+    const match = getCartLineDiscountMatch(input, line, codeConfig);
 
-    if (percentage <= 0) continue;
-    if (!productLinesByPercent[percentage]) {
-      productLinesByPercent[percentage] = [];
+    if (!match) continue;
+    if (!productLineIdsByPercent[match.percentage]) {
+      productLineIdsByPercent[match.percentage] = new Set<string>();
     }
-    productLinesByPercent[percentage].push({id: line.id});
+    productLineIdsByPercent[match.percentage].add(match.targetLineId);
   }
 
-  const candidates = Object.entries(productLinesByPercent).map(
-    ([percentage, lines]) => ({
+  const candidates = Object.entries(productLineIdsByPercent).map(
+    ([percentage, lineIds]) => ({
       message: `${percentage}% category discount`,
-      targets: lines.map((line) => ({
+      targets: Array.from(lineIds).map((id) => ({
         cartLine: {
-          id: line.id,
+          id,
         },
       })),
       value: {
