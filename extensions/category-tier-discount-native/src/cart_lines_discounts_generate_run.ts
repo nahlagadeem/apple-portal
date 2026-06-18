@@ -136,8 +136,7 @@ function getLinePercentageFromRules(product: ProductLineProduct, rules: MatchedR
         )) ||
       (rule.categoryKey === "ipad" && isCollectionMember(product.ipad)) ||
       (rule.categoryKey === "mac" && isCollectionMember(product.mac)) ||
-      (rule.categoryKey === "accessories" && isCollectionMember(product.accessories)) ||
-      (rule.categoryKey === "iphone" && isCollectionMember(product.iphone));
+      (rule.categoryKey === "accessories" && isCollectionMember(product.accessories));
 
     if (isMatch) {
       maxPercentage = Math.max(maxPercentage, rule.percentage);
@@ -158,6 +157,12 @@ function getBundleRulePercentage(input: CartInput, config: RuleConfig): number {
   }, 0);
 }
 
+function isBundleProduct(product: ProductLineProduct): boolean {
+  const productText = String((product as ProductLineProduct & {title?: string}).title || "").toLowerCase();
+
+  return productText.includes("bundle");
+}
+
 function getLinePercentage(input: CartInput, product: ProductLineProduct, config: RuleConfig): number {
   const rules = readRuleConfig(input, config);
   if (rules.length) return getLinePercentageFromRules(product, rules);
@@ -167,7 +172,6 @@ function getLinePercentage(input: CartInput, product: ProductLineProduct, config
     isCollectionMember(product.mac) ? tierConfig.macPercentage : 0,
     isCollectionMember(product.ipad) ? tierConfig.ipadPercentage : 0,
     isCollectionMember(product.accessories) ? tierConfig.accessoriesPercentage : 0,
-    isCollectionMember(product.iphone) ? tierConfig.iphonePercentage : 0,
     0,
   );
 }
@@ -211,10 +215,19 @@ function getBundleFallbackDiscountMatch(
   line: CartLine,
   config: RuleConfig,
 ): CartLineDiscountMatch | null {
-  if (!line.parentRelationship?.parent?.id) return null;
+  if (line.merchandise.__typename !== "ProductVariant") return null;
 
   const bundlePercentage = getBundleRulePercentage(input, config);
   if (bundlePercentage <= 0) return null;
+
+  if (isBundleProduct(line.merchandise.product)) {
+    return {
+      percentage: bundlePercentage,
+      targetLineId: line.id,
+    };
+  }
+
+  if (!line.parentRelationship?.parent?.id) return null;
 
   return {
     percentage: bundlePercentage,

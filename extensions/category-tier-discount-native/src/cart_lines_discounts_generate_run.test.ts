@@ -30,10 +30,10 @@ describe("cartLinesDiscountsGenerateRun", () => {
             merchandise: {
               __typename: "ProductVariant",
               product: {
+                title: "iPad Component",
                 ipad: false,
                 mac: false,
                 accessories: false,
-                iphone: false,
                 dynamicCollections: [
                   {
                     collectionId: BUNDLES_COLLECTION_ID,
@@ -118,10 +118,10 @@ describe("cartLinesDiscountsGenerateRun", () => {
             merchandise: {
               __typename: "ProductVariant",
               product: {
+                title: "iPad Component",
                 ipad: false,
                 mac: false,
                 accessories: false,
-                iphone: false,
                 dynamicCollections: [
                   {
                     collectionId: BUNDLES_COLLECTION_ID,
@@ -164,6 +164,78 @@ describe("cartLinesDiscountsGenerateRun", () => {
                   {
                     cartLine: {
                       id: "gid://shopify/CartLine/bundle-parent",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 10,
+                  },
+                },
+              },
+            ],
+            selectionStrategy: "ALL",
+          },
+        },
+      ],
+    });
+  });
+
+  test("applies a bundle title rule to a top-level bundle product", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/top-level-bundle",
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "Primary Years Learning Bundle",
+                ipad: false,
+                mac: false,
+                accessories: false,
+                dynamicCollections: [
+                  {
+                    collectionId: BUNDLES_COLLECTION_ID,
+                    isMember: false,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        discountConfig: {
+          value: JSON.stringify({
+            rules: [
+              {
+                collectionId: BUNDLES_COLLECTION_ID,
+                collectionTitle: "All Bundles",
+                percentage: 10,
+              },
+            ],
+            collectionIds: [BUNDLES_COLLECTION_ID],
+          }),
+        },
+        automaticConfig: {
+          value: JSON.stringify({ rules: [], collectionIds: [] }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: [
+              {
+                message: "10% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/top-level-bundle",
                     },
                   },
                 ],

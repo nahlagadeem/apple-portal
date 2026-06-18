@@ -29,10 +29,10 @@ query CartInput($collectionIds: [ID!] = []) {
         __typename
         ... on ProductVariant {
           product {
+            title
             ipad: inAnyCollection(ids: ["gid://shopify/Collection/452991221978"])
             mac: inAnyCollection(ids: ["gid://shopify/Collection/452991746266"])
             accessories: inAnyCollection(ids: ["gid://shopify/Collection/453527797978"])
-            iphone: inAnyCollection(ids: ["gid://shopify/Collection/452991123674"])
             dynamicCollections: inCollections(ids: $collectionIds) {
               collectionId
               isMember
