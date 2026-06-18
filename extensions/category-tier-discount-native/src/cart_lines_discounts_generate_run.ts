@@ -206,7 +206,7 @@ function getCartLineDiscountMatch(
 
   return {
     percentage: parentPercentage,
-    targetLineId: line.parentRelationship?.parent?.id || line.id,
+    targetLineId: line.id,
   };
 }
 
@@ -231,7 +231,7 @@ function getBundleFallbackDiscountMatch(
 
   return {
     percentage: bundlePercentage,
-    targetLineId: line.parentRelationship.parent.id,
+    targetLineId: line.id,
   };
 }
 

@@ -75,7 +75,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
                 targets: [
                   {
                     cartLine: {
-                      id: "gid://shopify/CartLine/bundle-parent",
+                      id: "gid://shopify/CartLine/component-1",
                     },
                   },
                 ],
@@ -163,7 +163,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
                 targets: [
                   {
                     cartLine: {
-                      id: "gid://shopify/CartLine/bundle-parent",
+                      id: "gid://shopify/CartLine/component-1",
                     },
                   },
                 ],
