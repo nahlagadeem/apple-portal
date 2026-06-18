@@ -19,6 +19,7 @@ query CartInput($collectionIds: [ID!] = []) {
             }
             ... on ProductVariant {
               product {
+                title
                 dynamicCollections: inCollections(ids: $collectionIds) {
                   collectionId
                   isMember

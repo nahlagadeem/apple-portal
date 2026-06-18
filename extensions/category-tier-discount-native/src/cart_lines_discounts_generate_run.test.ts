@@ -93,7 +93,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
     });
   });
 
-  test("applies a bundle title rule when parent collection membership is unavailable", () => {
+  test("applies a bundle title rule from the parent bundle product", () => {
     const input = {
       cart: {
         lines: [
@@ -105,6 +105,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
                 merchandise: {
                   __typename: "ProductVariant",
                   product: {
+                    title: "Primary Years Learning Bundle",
                     dynamicCollections: [
                       {
                         collectionId: BUNDLES_COLLECTION_ID,

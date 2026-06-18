@@ -42,7 +42,15 @@ type ProductLineProduct = Extract<
 >["product"];
 
 type CartLine = CartInput["cart"]["lines"][number];
-type CartLineMerchandise = CartLine["merchandise"];
+type BundleProduct = {
+  title?: string;
+};
+
+type BundleMerchandise = {
+  __typename?: string;
+  title?: string;
+  product?: BundleProduct;
+};
 
 const DEFAULT_CONFIG: TierConfig = {
   ipadPercentage: 8,
@@ -158,20 +166,20 @@ function getBundleRulePercentage(input: CartInput, config: RuleConfig): number {
   }, 0);
 }
 
-function isBundleProduct(product: ProductLineProduct): boolean {
-  const productText = String((product as ProductLineProduct & {title?: string}).title || "").toLowerCase();
+function isBundleProduct(product: BundleProduct): boolean {
+  const productText = String(product.title || "").toLowerCase();
 
   return productText.includes("bundle");
 }
 
-function isBundleMerchandise(merchandise: CartLineMerchandise): boolean {
+function isBundleMerchandise(merchandise: BundleMerchandise): boolean {
   if (merchandise.__typename === "CustomProduct") {
-    return String((merchandise as CartLineMerchandise & {title?: string}).title || "")
+    return String(merchandise.title || "")
       .toLowerCase()
       .includes("bundle");
   }
 
-  if (merchandise.__typename === "ProductVariant") {
+  if (merchandise.__typename === "ProductVariant" && merchandise.product) {
     return isBundleProduct(merchandise.product);
   }
 
@@ -196,6 +204,10 @@ function getParentProduct(line: CartLine): ProductLineProduct | null {
   if (parentMerchandise?.__typename !== "ProductVariant") return null;
 
   return parentMerchandise.product as ProductLineProduct;
+}
+
+function getParentMerchandise(line: CartLine): BundleMerchandise | null {
+  return line.parentRelationship?.parent?.merchandise ?? null;
 }
 
 function getCartLineDiscountMatch(
@@ -240,7 +252,8 @@ function getBundleFallbackDiscountMatch(
     };
   }
 
-  if (!line.parentRelationship?.parent?.id) return null;
+  const parentMerchandise = getParentMerchandise(line);
+  if (!parentMerchandise || !isBundleMerchandise(parentMerchandise)) return null;
 
   return {
     percentage: bundlePercentage,
