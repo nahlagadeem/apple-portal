@@ -92,4 +92,92 @@ describe("cartLinesDiscountsGenerateRun", () => {
       ],
     });
   });
+
+  test("applies a bundle title rule when parent collection membership is unavailable", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/component-1",
+            parentRelationship: {
+              parent: {
+                id: "gid://shopify/CartLine/bundle-parent",
+                merchandise: {
+                  __typename: "ProductVariant",
+                  product: {
+                    dynamicCollections: [
+                      {
+                        collectionId: BUNDLES_COLLECTION_ID,
+                        isMember: false,
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                ipad: false,
+                mac: false,
+                accessories: false,
+                iphone: false,
+                dynamicCollections: [
+                  {
+                    collectionId: BUNDLES_COLLECTION_ID,
+                    isMember: false,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        discountConfig: {
+          value: JSON.stringify({
+            rules: [
+              {
+                collectionId: BUNDLES_COLLECTION_ID,
+                collectionTitle: "All Bundles",
+                percentage: 10,
+              },
+            ],
+            collectionIds: [BUNDLES_COLLECTION_ID],
+          }),
+        },
+        automaticConfig: {
+          value: JSON.stringify({ rules: [], collectionIds: [] }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: [
+              {
+                message: "10% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/bundle-parent",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 10,
+                  },
+                },
+              },
+            ],
+            selectionStrategy: "ALL",
+          },
+        },
+      ],
+    });
+  });
 });

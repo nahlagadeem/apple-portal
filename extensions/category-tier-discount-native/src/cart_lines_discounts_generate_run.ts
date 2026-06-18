@@ -27,6 +27,7 @@ type RuleConfig = Partial<TierConfig> & {
 type MatchedRule = {
   categoryKey?: string;
   collectionId?: string;
+  collectionTitle?: string;
   percentage: number;
 };
 
@@ -102,6 +103,7 @@ function readRuleConfig(input: CartInput, config: RuleConfig): MatchedRule[] {
     .map((rule) => ({
       categoryKey: String(rule.categoryKey || "").trim(),
       collectionId: String(rule.collectionId || "").trim(),
+      collectionTitle: String(rule.collectionTitle || "").trim(),
       percentage: clampPercentage(rule.percentage, 0),
     }))
     .filter((rule) => (rule.categoryKey || rule.collectionId) && rule.percentage > 0);
@@ -143,6 +145,17 @@ function getLinePercentageFromRules(product: ProductLineProduct, rules: MatchedR
   }
 
   return maxPercentage;
+}
+
+function getBundleRulePercentage(input: CartInput, config: RuleConfig): number {
+  const rules = readRuleConfig(input, config);
+
+  return rules.reduce((maxPercentage, rule) => {
+    const title = String(rule.collectionTitle || "").toLowerCase();
+    if (!title.includes("bundle")) return maxPercentage;
+
+    return Math.max(maxPercentage, rule.percentage);
+  }, 0);
 }
 
 function getLinePercentage(input: CartInput, product: ProductLineProduct, config: RuleConfig): number {
@@ -193,6 +206,22 @@ function getCartLineDiscountMatch(
   };
 }
 
+function getBundleFallbackDiscountMatch(
+  input: CartInput,
+  line: CartLine,
+  config: RuleConfig,
+): CartLineDiscountMatch | null {
+  if (!line.parentRelationship?.parent?.id) return null;
+
+  const bundlePercentage = getBundleRulePercentage(input, config);
+  if (bundlePercentage <= 0) return null;
+
+  return {
+    percentage: bundlePercentage,
+    targetLineId: line.parentRelationship.parent.id,
+  };
+}
+
 export function cartLinesDiscountsGenerateRun(
   input: CartInput,
 ): CartLinesDiscountsGenerateRunResult {
@@ -216,9 +245,16 @@ export function cartLinesDiscountsGenerateRun(
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename !== "ProductVariant") continue;
 
-    if (getCartLineDiscountMatch(input, line, automaticConfig)) continue;
+    if (
+      getCartLineDiscountMatch(input, line, automaticConfig) ||
+      getBundleFallbackDiscountMatch(input, line, automaticConfig)
+    ) {
+      continue;
+    }
 
-    const match = getCartLineDiscountMatch(input, line, codeConfig);
+    const match =
+      getCartLineDiscountMatch(input, line, codeConfig) ||
+      getBundleFallbackDiscountMatch(input, line, codeConfig);
 
     if (!match) continue;
     if (!productLineIdsByPercent[match.percentage]) {
