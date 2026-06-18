@@ -324,8 +324,13 @@ export function cartLinesDiscountsGenerateRun(
   const productLineIdsByPercent: Record<number, Set<string>> =
     {};
   const codeEligibleLineIds = new Set<string>();
+  const bundleOnlyPercentage = getBundleOnlyRulePercentage(input, codeConfig);
 
   for (const line of input.cart.lines) {
+    if (bundleOnlyPercentage > 0) {
+      codeEligibleLineIds.add(line.id);
+    }
+
     if (
       getCartLineDiscountMatch(input, line, automaticConfig) ||
       getBundleFallbackDiscountMatch(input, line, automaticConfig)
@@ -337,7 +342,6 @@ export function cartLinesDiscountsGenerateRun(
       getCartLineDiscountMatch(input, line, codeConfig) ||
       getBundleFallbackDiscountMatch(input, line, codeConfig);
 
-    codeEligibleLineIds.add(line.id);
     if (!match) continue;
     if (!productLineIdsByPercent[match.percentage]) {
       productLineIdsByPercent[match.percentage] = new Set<string>();
@@ -345,7 +349,6 @@ export function cartLinesDiscountsGenerateRun(
     productLineIdsByPercent[match.percentage].add(match.targetLineId);
   }
 
-  const bundleOnlyPercentage = getBundleOnlyRulePercentage(input, codeConfig);
   if (
     !Object.keys(productLineIdsByPercent).length &&
     bundleOnlyPercentage > 0 &&

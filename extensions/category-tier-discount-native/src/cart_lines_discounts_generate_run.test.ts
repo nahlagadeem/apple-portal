@@ -464,4 +464,80 @@ describe("cartLinesDiscountsGenerateRun", () => {
 
     expect(cartLinesDiscountsGenerateRun(input)).toEqual({ operations: [] });
   });
+
+  test("applies a bundle-only rule even when automatic exclusions match component categories", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/component-1",
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "11-inch iPad Wi-Fi",
+                ipad: true,
+                mac: false,
+                accessories: false,
+                dynamicCollections: [
+                  {
+                    collectionId: BUNDLES_COLLECTION_ID,
+                    isMember: false,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        discountConfig: {
+          value: JSON.stringify({
+            rules: [
+              {
+                collectionId: BUNDLES_COLLECTION_ID,
+                collectionTitle: "All Bundles",
+                percentage: 10,
+              },
+            ],
+            collectionIds: [BUNDLES_COLLECTION_ID],
+          }),
+        },
+        automaticConfig: {
+          value: JSON.stringify({
+            ipadPercentage: 8,
+            rules: [],
+            collectionIds: [],
+          }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: [
+              {
+                message: "10% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/component-1",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 10,
+                  },
+                },
+              },
+            ],
+            selectionStrategy: "ALL",
+          },
+        },
+      ],
+    });
+  });
 });
