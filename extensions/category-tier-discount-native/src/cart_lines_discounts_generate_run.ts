@@ -42,6 +42,7 @@ type ProductLineProduct = Extract<
 >["product"];
 
 type CartLine = CartInput["cart"]["lines"][number];
+type CartLineMerchandise = CartLine["merchandise"];
 
 const DEFAULT_CONFIG: TierConfig = {
   ipadPercentage: 8,
@@ -163,6 +164,20 @@ function isBundleProduct(product: ProductLineProduct): boolean {
   return productText.includes("bundle");
 }
 
+function isBundleMerchandise(merchandise: CartLineMerchandise): boolean {
+  if (merchandise.__typename === "CustomProduct") {
+    return String((merchandise as CartLineMerchandise & {title?: string}).title || "")
+      .toLowerCase()
+      .includes("bundle");
+  }
+
+  if (merchandise.__typename === "ProductVariant") {
+    return isBundleProduct(merchandise.product);
+  }
+
+  return false;
+}
+
 function getLinePercentage(input: CartInput, product: ProductLineProduct, config: RuleConfig): number {
   const rules = readRuleConfig(input, config);
   if (rules.length) return getLinePercentageFromRules(product, rules);
@@ -215,12 +230,10 @@ function getBundleFallbackDiscountMatch(
   line: CartLine,
   config: RuleConfig,
 ): CartLineDiscountMatch | null {
-  if (line.merchandise.__typename !== "ProductVariant") return null;
-
   const bundlePercentage = getBundleRulePercentage(input, config);
   if (bundlePercentage <= 0) return null;
 
-  if (isBundleProduct(line.merchandise.product)) {
+  if (isBundleMerchandise(line.merchandise)) {
     return {
       percentage: bundlePercentage,
       targetLineId: line.id,
@@ -256,8 +269,6 @@ export function cartLinesDiscountsGenerateRun(
     {};
 
   for (const line of input.cart.lines) {
-    if (line.merchandise.__typename !== "ProductVariant") continue;
-
     if (
       getCartLineDiscountMatch(input, line, automaticConfig) ||
       getBundleFallbackDiscountMatch(input, line, automaticConfig)

@@ -252,4 +252,65 @@ describe("cartLinesDiscountsGenerateRun", () => {
       ],
     });
   });
+
+  test("applies a bundle title rule to a top-level custom bundle line", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/custom-bundle",
+            merchandise: {
+              __typename: "CustomProduct",
+              title: "Primary Years Learning Bundle",
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        discountConfig: {
+          value: JSON.stringify({
+            rules: [
+              {
+                collectionId: BUNDLES_COLLECTION_ID,
+                collectionTitle: "All Bundles",
+                percentage: 10,
+              },
+            ],
+            collectionIds: [BUNDLES_COLLECTION_ID],
+          }),
+        },
+        automaticConfig: {
+          value: JSON.stringify({ rules: [], collectionIds: [] }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: [
+              {
+                message: "10% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/custom-bundle",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 10,
+                  },
+                },
+              },
+            ],
+            selectionStrategy: "ALL",
+          },
+        },
+      ],
+    });
+  });
 });
