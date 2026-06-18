@@ -61,6 +61,15 @@ const DEFAULT_CONFIG: TierConfig = {
   tvHomePercentage: 0,
 };
 
+const ZERO_CONFIG: TierConfig = {
+  ipadPercentage: 0,
+  macPercentage: 0,
+  accessoriesPercentage: 0,
+  iphonePercentage: 0,
+  appleWatchPercentage: 0,
+  tvHomePercentage: 0,
+};
+
 function clampPercentage(value: unknown, fallback: number): number {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return fallback;
@@ -86,6 +95,26 @@ function readTierConfig(config: RuleConfig): TierConfig {
     appleWatchPercentage: clampPercentage(config.appleWatchPercentage, DEFAULT_CONFIG.appleWatchPercentage),
     tvHomePercentage: clampPercentage(config.tvHomePercentage, DEFAULT_CONFIG.tvHomePercentage),
   };
+}
+
+function readAutomaticConfig(rawValue: string | undefined | null): RuleConfig {
+  if (!rawValue) return { ...ZERO_CONFIG, rules: [], collectionIds: [] };
+
+  try {
+    const parsed = JSON.parse(String(rawValue || "{}")) as RuleConfig;
+    return {
+      ipadPercentage: clampPercentage(parsed.ipadPercentage, 0),
+      macPercentage: clampPercentage(parsed.macPercentage, 0),
+      accessoriesPercentage: clampPercentage(parsed.accessoriesPercentage, 0),
+      iphonePercentage: clampPercentage(parsed.iphonePercentage, 0),
+      appleWatchPercentage: clampPercentage(parsed.appleWatchPercentage, 0),
+      tvHomePercentage: clampPercentage(parsed.tvHomePercentage, 0),
+      rules: Array.isArray(parsed.rules) ? parsed.rules : [],
+      collectionIds: Array.isArray(parsed.collectionIds) ? parsed.collectionIds : [],
+    };
+  } catch {
+    return { ...ZERO_CONFIG, rules: [], collectionIds: [] };
+  }
 }
 
 function getBuyerInstituteKey(input: CartInput): string {
@@ -164,6 +193,20 @@ function getBundleRulePercentage(input: CartInput, config: RuleConfig): number {
 
     return Math.max(maxPercentage, rule.percentage);
   }, 0);
+}
+
+function getBundleOnlyRulePercentage(input: CartInput, config: RuleConfig): number {
+  const rules = readRuleConfig(input, config);
+  if (!rules.length) return 0;
+
+  let maxPercentage = 0;
+  for (const rule of rules) {
+    const title = String(rule.collectionTitle || "").toLowerCase();
+    if (!title.includes("bundle")) return 0;
+    maxPercentage = Math.max(maxPercentage, rule.percentage);
+  }
+
+  return maxPercentage;
 }
 
 function isBundleProduct(product: BundleProduct): boolean {
@@ -277,9 +320,10 @@ export function cartLinesDiscountsGenerateRun(
   }
 
   const codeConfig = parseConfig(input.discount.discountConfig?.value);
-  const automaticConfig = parseConfig(input.discount.automaticConfig?.value);
+  const automaticConfig = readAutomaticConfig(input.discount.automaticConfig?.value);
   const productLineIdsByPercent: Record<number, Set<string>> =
     {};
+  const codeEligibleLineIds = new Set<string>();
 
   for (const line of input.cart.lines) {
     if (
@@ -293,11 +337,21 @@ export function cartLinesDiscountsGenerateRun(
       getCartLineDiscountMatch(input, line, codeConfig) ||
       getBundleFallbackDiscountMatch(input, line, codeConfig);
 
+    codeEligibleLineIds.add(line.id);
     if (!match) continue;
     if (!productLineIdsByPercent[match.percentage]) {
       productLineIdsByPercent[match.percentage] = new Set<string>();
     }
     productLineIdsByPercent[match.percentage].add(match.targetLineId);
+  }
+
+  const bundleOnlyPercentage = getBundleOnlyRulePercentage(input, codeConfig);
+  if (
+    !Object.keys(productLineIdsByPercent).length &&
+    bundleOnlyPercentage > 0 &&
+    codeEligibleLineIds.size > 0
+  ) {
+    productLineIdsByPercent[bundleOnlyPercentage] = codeEligibleLineIds;
   }
 
   const candidates = Object.entries(productLineIdsByPercent).map(
