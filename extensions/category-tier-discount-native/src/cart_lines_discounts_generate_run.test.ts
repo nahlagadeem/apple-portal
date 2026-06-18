@@ -13,10 +13,10 @@ describe("cartLinesDiscountsGenerateRun", () => {
             id: "gid://shopify/CartLine/component-1",
             parentRelationship: {
               parent: {
-                id: "gid://shopify/CartLine/bundle-parent",
                 merchandise: {
                   __typename: "ProductVariant",
                   product: {
+                    title: "Primary Years Learning Bundle",
                     dynamicCollections: [
                       {
                         collectionId: BUNDLES_COLLECTION_ID,
@@ -101,7 +101,6 @@ describe("cartLinesDiscountsGenerateRun", () => {
             id: "gid://shopify/CartLine/component-1",
             parentRelationship: {
               parent: {
-                id: "gid://shopify/CartLine/bundle-parent",
                 merchandise: {
                   __typename: "ProductVariant",
                   product: {
