@@ -253,6 +253,10 @@ function getParentMerchandise(line: CartLine): BundleMerchandise | null {
   return line.parentRelationship?.parent?.merchandise ?? null;
 }
 
+function getParentLineId(line: CartLine): string | null {
+  return line.parentRelationship?.parent?.id ?? null;
+}
+
 function getCartLineDiscountMatch(
   input: CartInput,
   line: CartLine,
@@ -276,7 +280,7 @@ function getCartLineDiscountMatch(
 
   return {
     percentage: parentPercentage,
-    targetLineId: line.id,
+    targetLineId: getParentLineId(line) || line.id,
   };
 }
 
@@ -300,7 +304,7 @@ function getBundleFallbackDiscountMatch(
 
   return {
     percentage: bundlePercentage,
-    targetLineId: line.id,
+    targetLineId: getParentLineId(line) || line.id,
   };
 }
 
@@ -328,7 +332,7 @@ export function cartLinesDiscountsGenerateRun(
 
   for (const line of input.cart.lines) {
     if (bundleOnlyPercentage > 0) {
-      codeEligibleLineIds.add(line.id);
+      codeEligibleLineIds.add(getParentLineId(line) || line.id);
     }
 
     if (

@@ -11,11 +11,9 @@ query CartInput($collectionIds: [ID!] = []) {
       id
       parentRelationship {
         parent {
+          id
           merchandise {
             __typename
-            ... on CustomProduct {
-              title
-            }
             ... on ProductVariant {
               product {
                 title
@@ -30,9 +28,6 @@ query CartInput($collectionIds: [ID!] = []) {
       }
       merchandise {
         __typename
-        ... on CustomProduct {
-          title
-        }
         ... on ProductVariant {
           product {
             title
