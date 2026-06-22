@@ -263,7 +263,7 @@ function getCartLineDiscountMatch(
   config: RuleConfig,
 ): CartLineDiscountMatch | null {
   if (line.merchandise.__typename !== "ProductVariant") return null;
-  const targetLineId = getParentLineId(line) || line.id;
+  const targetLineId = line.id;
 
   const productPercentage = getLinePercentage(input, line.merchandise.product, config);
   if (productPercentage > 0) {
@@ -305,7 +305,7 @@ function getBundleFallbackDiscountMatch(
 
   return {
     percentage: bundlePercentage,
-    targetLineId: getParentLineId(line) || line.id,
+    targetLineId: line.id,
   };
 }
 
@@ -333,7 +333,7 @@ export function cartLinesDiscountsGenerateRun(
 
   for (const line of input.cart.lines) {
     if (bundleOnlyPercentage > 0) {
-      codeEligibleLineIds.add(getParentLineId(line) || line.id);
+      codeEligibleLineIds.add(line.id);
     }
 
     if (
@@ -370,7 +370,9 @@ export function cartLinesDiscountsGenerateRun(
     productLineIdsByPercent[bundleOnlyPercentage] = codeEligibleLineIds;
   }
 
-  const candidates = Object.entries(productLineIdsByPercent).map(
+  const candidates = Object.entries(productLineIdsByPercent)
+    .sort(([percentageA], [percentageB]) => Number(percentageB) - Number(percentageA))
+    .map(
     ([percentage, lineIds]) => ({
       message: `${percentage}% category discount`,
       targets: Array.from(lineIds).map((id) => ({

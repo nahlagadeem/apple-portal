@@ -3,6 +3,8 @@ import { DiscountClass, CartInput } from "../generated/api";
 import { cartLinesDiscountsGenerateRun } from "./cart_lines_discounts_generate_run";
 
 const BUNDLES_COLLECTION_ID = "gid://shopify/Collection/999";
+const IPAD_COLLECTION_ID = "gid://shopify/Collection/1001";
+const ACCESSORIES_COLLECTION_ID = "gid://shopify/Collection/1002";
 
 describe("cartLinesDiscountsGenerateRun", () => {
   test("applies a dynamic collection rule to a bundle parent product line", () => {
@@ -73,13 +75,13 @@ describe("cartLinesDiscountsGenerateRun", () => {
             candidates: [
               {
                 message: "10% category discount",
-                targets: [
-                  {
-                    cartLine: {
-                      id: "gid://shopify/CartLine/bundle-parent",
-                    },
-                  },
-                ],
+            targets: [
+              {
+                cartLine: {
+                  id: "gid://shopify/CartLine/component-1",
+                },
+              },
+            ],
                 value: {
                   percentage: {
                     value: 10,
@@ -162,13 +164,13 @@ describe("cartLinesDiscountsGenerateRun", () => {
             candidates: [
               {
                 message: "10% category discount",
-                targets: [
-                  {
-                    cartLine: {
-                      id: "gid://shopify/CartLine/bundle-parent",
-                    },
-                  },
-                ],
+            targets: [
+              {
+                cartLine: {
+                  id: "gid://shopify/CartLine/component-1",
+                },
+              },
+            ],
                 value: {
                   percentage: {
                     value: 10,
@@ -183,7 +185,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
     });
   });
 
-  test("applies a bundle title rule from the parent bundle product", () => {
+  test("applies a bundle title rule from the bundle component line", () => {
     const input = {
       cart: {
         lines: [
@@ -254,7 +256,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
                 targets: [
                   {
                     cartLine: {
-                      id: "gid://shopify/CartLine/bundle-parent",
+                      id: "gid://shopify/CartLine/component-1",
                     },
                   },
                 ],
@@ -344,7 +346,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
     });
   });
 
-  test("uses the highest percentage when mixed bundle components target the same parent line", () => {
+  test("uses the highest percentage when mixed bundle components share a bundle", () => {
     const input = {
       cart: {
         lines: [
@@ -376,7 +378,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
                 accessories: false,
                 dynamicCollections: [
                   {
-                    collectionId: BUNDLES_COLLECTION_ID,
+                    collectionId: IPAD_COLLECTION_ID,
                     isMember: true,
                   },
                 ],
@@ -411,7 +413,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
                 accessories: true,
                 dynamicCollections: [
                   {
-                    collectionId: BUNDLES_COLLECTION_ID,
+                    collectionId: ACCESSORIES_COLLECTION_ID,
                     isMember: true,
                   },
                 ],
@@ -446,7 +448,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
                 accessories: true,
                 dynamicCollections: [
                   {
-                    collectionId: BUNDLES_COLLECTION_ID,
+                    collectionId: ACCESSORIES_COLLECTION_ID,
                     isMember: true,
                   },
                 ],
@@ -461,17 +463,17 @@ describe("cartLinesDiscountsGenerateRun", () => {
           value: JSON.stringify({
             rules: [
               {
-                collectionId: BUNDLES_COLLECTION_ID,
+                collectionId: IPAD_COLLECTION_ID,
                 collectionTitle: "iPad Collection",
                 percentage: 8,
               },
               {
-                collectionId: BUNDLES_COLLECTION_ID,
+                collectionId: ACCESSORIES_COLLECTION_ID,
                 collectionTitle: "Accessories Collection",
                 percentage: 5,
               },
             ],
-            collectionIds: [BUNDLES_COLLECTION_ID],
+            collectionIds: [IPAD_COLLECTION_ID, ACCESSORIES_COLLECTION_ID],
           }),
         },
         automaticConfig: {
@@ -490,13 +492,33 @@ describe("cartLinesDiscountsGenerateRun", () => {
                 targets: [
                   {
                     cartLine: {
-                      id: "gid://shopify/CartLine/bundle-parent",
+                      id: "gid://shopify/CartLine/component-ipad",
                     },
                   },
                 ],
                 value: {
                   percentage: {
                     value: 8,
+                  },
+                },
+              },
+              {
+                message: "5% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/component-case",
+                    },
+                  },
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/component-screen",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 5,
                   },
                 },
               },
