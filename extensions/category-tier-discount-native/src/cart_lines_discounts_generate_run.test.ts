@@ -94,6 +94,95 @@ describe("cartLinesDiscountsGenerateRun", () => {
     });
   });
 
+  test("targets the bundle parent when a bundle component matches the collection directly", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/component-1",
+            parentRelationship: {
+              parent: {
+                id: "gid://shopify/CartLine/bundle-parent",
+                merchandise: {
+                  __typename: "ProductVariant",
+                  product: {
+                    title: "Primary Years Learning Bundle",
+                    dynamicCollections: [
+                      {
+                        collectionId: BUNDLES_COLLECTION_ID,
+                        isMember: true,
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "iPad Component",
+                ipad: true,
+                mac: false,
+                accessories: false,
+                dynamicCollections: [
+                  {
+                    collectionId: BUNDLES_COLLECTION_ID,
+                    isMember: true,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        discountConfig: {
+          value: JSON.stringify({
+            rules: [
+              {
+                collectionId: BUNDLES_COLLECTION_ID,
+                collectionTitle: "Bundles",
+                percentage: 10,
+              },
+            ],
+            collectionIds: [BUNDLES_COLLECTION_ID],
+          }),
+        },
+        automaticConfig: {
+          value: JSON.stringify({ rules: [], collectionIds: [] }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: [
+              {
+                message: "10% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/bundle-parent",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 10,
+                  },
+                },
+              },
+            ],
+            selectionStrategy: "ALL",
+          },
+        },
+      ],
+    });
+  });
+
   test("applies a bundle title rule from the parent bundle product", () => {
     const input = {
       cart: {

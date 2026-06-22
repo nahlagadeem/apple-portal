@@ -263,12 +263,13 @@ function getCartLineDiscountMatch(
   config: RuleConfig,
 ): CartLineDiscountMatch | null {
   if (line.merchandise.__typename !== "ProductVariant") return null;
+  const targetLineId = getParentLineId(line) || line.id;
 
   const productPercentage = getLinePercentage(input, line.merchandise.product, config);
   if (productPercentage > 0) {
     return {
       percentage: productPercentage,
-      targetLineId: line.id,
+      targetLineId,
     };
   }
 
@@ -280,7 +281,7 @@ function getCartLineDiscountMatch(
 
   return {
     percentage: parentPercentage,
-    targetLineId: getParentLineId(line) || line.id,
+    targetLineId,
   };
 }
 
