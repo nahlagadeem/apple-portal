@@ -344,6 +344,170 @@ describe("cartLinesDiscountsGenerateRun", () => {
     });
   });
 
+  test("uses the highest percentage when mixed bundle components target the same parent line", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/component-ipad",
+            parentRelationship: {
+              parent: {
+                id: "gid://shopify/CartLine/bundle-parent",
+                merchandise: {
+                  __typename: "ProductVariant",
+                  product: {
+                    title: "Primary Years Learning Bundle",
+                    dynamicCollections: [
+                      {
+                        collectionId: BUNDLES_COLLECTION_ID,
+                        isMember: true,
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "11-inch iPad Wi-Fi",
+                ipad: true,
+                mac: false,
+                accessories: false,
+                dynamicCollections: [
+                  {
+                    collectionId: BUNDLES_COLLECTION_ID,
+                    isMember: true,
+                  },
+                ],
+              },
+            },
+          },
+          {
+            id: "gid://shopify/CartLine/component-case",
+            parentRelationship: {
+              parent: {
+                id: "gid://shopify/CartLine/bundle-parent",
+                merchandise: {
+                  __typename: "ProductVariant",
+                  product: {
+                    title: "Primary Years Learning Bundle",
+                    dynamicCollections: [
+                      {
+                        collectionId: BUNDLES_COLLECTION_ID,
+                        isMember: true,
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "Flip Hybrid Case",
+                ipad: false,
+                mac: false,
+                accessories: true,
+                dynamicCollections: [
+                  {
+                    collectionId: BUNDLES_COLLECTION_ID,
+                    isMember: true,
+                  },
+                ],
+              },
+            },
+          },
+          {
+            id: "gid://shopify/CartLine/component-screen",
+            parentRelationship: {
+              parent: {
+                id: "gid://shopify/CartLine/bundle-parent",
+                merchandise: {
+                  __typename: "ProductVariant",
+                  product: {
+                    title: "Primary Years Learning Bundle",
+                    dynamicCollections: [
+                      {
+                        collectionId: BUNDLES_COLLECTION_ID,
+                        isMember: true,
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "ESR Tempered-Glass",
+                ipad: false,
+                mac: false,
+                accessories: true,
+                dynamicCollections: [
+                  {
+                    collectionId: BUNDLES_COLLECTION_ID,
+                    isMember: true,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        discountConfig: {
+          value: JSON.stringify({
+            rules: [
+              {
+                collectionId: BUNDLES_COLLECTION_ID,
+                collectionTitle: "iPad Collection",
+                percentage: 8,
+              },
+              {
+                collectionId: BUNDLES_COLLECTION_ID,
+                collectionTitle: "Accessories Collection",
+                percentage: 5,
+              },
+            ],
+            collectionIds: [BUNDLES_COLLECTION_ID],
+          }),
+        },
+        automaticConfig: {
+          value: JSON.stringify({ rules: [], collectionIds: [] }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: [
+              {
+                message: "8% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/bundle-parent",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 8,
+                  },
+                },
+              },
+            ],
+            selectionStrategy: "ALL",
+          },
+        },
+      ],
+    });
+  });
+
   test("applies a bundle-only rule when Shopify exposes only expanded component lines", () => {
     const input = {
       cart: {
