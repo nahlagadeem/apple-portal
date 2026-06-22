@@ -40,6 +40,78 @@ function normalizeMode(input: string | null | undefined): "basic" | "app" {
   return String(input || "").trim().toLowerCase() === "app" ? "app" : "basic";
 }
 
+function clampPercentage(input: string | null | undefined, fallback = 0) {
+  const parsed = Number(String(input ?? "").trim());
+  if (!Number.isFinite(parsed)) return fallback;
+  if (parsed < 0) return 0;
+  if (parsed > 100) return 100;
+  return parsed;
+}
+
+function buildAppConfigFromSearchParams(searchParams: URLSearchParams) {
+  const collectionRules = [
+    {
+      key: "ipadPercentage",
+      collectionId: "gid://shopify/Collection/452991221978",
+      collectionTitle: "iPad",
+      defaultPercentage: 8,
+    },
+    {
+      key: "macPercentage",
+      collectionId: "gid://shopify/Collection/452991746266",
+      collectionTitle: "Mac",
+      defaultPercentage: 13,
+    },
+    {
+      key: "accessoriesPercentage",
+      collectionId: "gid://shopify/Collection/453527797978",
+      collectionTitle: "Accessories",
+      defaultPercentage: 5,
+    },
+    {
+      key: "iphonePercentage",
+      collectionId: "gid://shopify/Collection/452991123674",
+      collectionTitle: "iPhone",
+      defaultPercentage: 0,
+    },
+    {
+      key: "appleWatchPercentage",
+      collectionId: "gid://shopify/Collection/52991287514",
+      collectionTitle: "Apple Watch",
+      defaultPercentage: 0,
+    },
+    {
+      key: "tvHomePercentage",
+      collectionId: "gid://shopify/Collection/453560008922",
+      collectionTitle: "TV & Home",
+      defaultPercentage: 0,
+    },
+  ];
+
+  const rules = collectionRules
+    .map((entry) => {
+      const percentage = clampPercentage(searchParams.get(entry.key), entry.defaultPercentage);
+      return {
+        collectionId: entry.collectionId,
+        collectionTitle: entry.collectionTitle,
+        percentage,
+      };
+    })
+    .filter((rule) => rule.percentage > 0);
+
+  return {
+    ipadPercentage: clampPercentage(searchParams.get("ipadPercentage"), 8),
+    macPercentage: clampPercentage(searchParams.get("macPercentage"), 13),
+    accessoriesPercentage: clampPercentage(searchParams.get("accessoriesPercentage"), 5),
+    iphonePercentage: clampPercentage(searchParams.get("iphonePercentage"), 0),
+    appleWatchPercentage: clampPercentage(searchParams.get("appleWatchPercentage"), 0),
+    tvHomePercentage: clampPercentage(searchParams.get("tvHomePercentage"), 0),
+    airpodsPercentage: clampPercentage(searchParams.get("airpodsPercentage"), 0),
+    rules,
+    collectionIds: rules.map((rule) => rule.collectionId),
+  };
+}
+
 function buildBundleAppConfig() {
   const bundleCollectionId = "gid://shopify/Collection/458566009050";
   return {
@@ -168,7 +240,7 @@ async function handle(request: Request) {
   try {
     if (mode === "app") {
       const functionId = await resolveDiscountFunctionId(admin);
-      const bundleConfig = buildBundleAppConfig();
+      const bundleConfig = buildAppConfigFromSearchParams(url.searchParams);
       const result = await admin.graphql(
         `
           mutation discountCodeAppCreate($codeAppDiscount: DiscountCodeAppInput!) {
