@@ -36,6 +36,70 @@ function normalizeShopDomain(input: string | null | undefined): string {
   }
 }
 
+function normalizeMode(input: string | null | undefined): "basic" | "app" {
+  return String(input || "").trim().toLowerCase() === "app" ? "app" : "basic";
+}
+
+function buildBundleAppConfig() {
+  const bundleCollectionId = "gid://shopify/Collection/458566009050";
+  return {
+    ipadPercentage: 0,
+    macPercentage: 0,
+    accessoriesPercentage: 0,
+    iphonePercentage: 0,
+    appleWatchPercentage: 0,
+    tvHomePercentage: 0,
+    airpodsPercentage: 0,
+    rules: [
+      {
+        collectionId: bundleCollectionId,
+        collectionTitle: "All Bundles",
+        percentage: 10,
+      },
+    ],
+    collectionIds: [bundleCollectionId],
+  };
+}
+
+async function resolveDiscountFunctionId(admin: GraphqlClient): Promise<string> {
+  const result = await admin.graphql(
+    `
+      query DiscountFunctions {
+        shopifyFunctions(first: 100) {
+          nodes {
+            id
+            title
+            apiType
+            app {
+              title
+            }
+          }
+        }
+      }
+    `
+  );
+  const body = await result.json().catch(() => null);
+  const functionNodes = body?.data?.shopifyFunctions?.nodes ?? [];
+  const discountFunction =
+    functionNodes.find(
+      (node: { apiType?: string; title?: string; app?: { title?: string } }) =>
+        String(node?.apiType || "").toLowerCase().startsWith("discount") &&
+        String(node?.title || "").toLowerCase().includes("category-tier-discount-native"),
+    ) ||
+    functionNodes.find(
+      (node: { apiType?: string; title?: string; app?: { title?: string } }) =>
+        String(node?.apiType || "").toLowerCase().startsWith("discount") &&
+        String(node?.app?.title || "").toLowerCase().includes("student_discount"),
+    ) ||
+    functionNodes.find((node: { apiType?: string }) => String(node?.apiType || "").toLowerCase().startsWith("discount"));
+
+  const functionId = String(discountFunction?.id || "").trim();
+  if (!functionId) {
+    throw new Error("No discount function found for student_discount.");
+  }
+  return functionId;
+}
+
 async function handle(request: Request) {
   console.log("[create-discount-live] HIT", new Date().toISOString(), request.method, request.url);
 
@@ -43,6 +107,7 @@ async function handle(request: Request) {
   const liveShop = normalizeShopDomain(env.LIVE_SHOP_DOMAIN);
   const requestedShop = normalizeShopDomain(url.searchParams.get("shop"));
   const shop = requestedShop || liveShop;
+  const mode = normalizeMode(url.searchParams.get("mode"));
   let proxyVerified = false;
   try {
     await authenticate.public.appProxy(request);
@@ -94,9 +159,94 @@ async function handle(request: Request) {
     }
   }
 
-  const code = `STUDENT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const code =
+    String(url.searchParams.get("code") || "").trim().toUpperCase() ||
+    (mode === "app"
+      ? `BUNDLE-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+      : `STUDENT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
 
   try {
+    if (mode === "app") {
+      const functionId = await resolveDiscountFunctionId(admin);
+      const bundleConfig = buildBundleAppConfig();
+      const result = await admin.graphql(
+        `
+          mutation discountCodeAppCreate($codeAppDiscount: DiscountCodeAppInput!) {
+            discountCodeAppCreate(codeAppDiscount: $codeAppDiscount) {
+              codeAppDiscount {
+                discountId
+                title
+                codes(first: 1) {
+                  nodes {
+                    code
+                  }
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+        {
+          variables: {
+            codeAppDiscount: {
+              title: code,
+              code,
+              functionId,
+              startsAt: new Date().toISOString(),
+              discountClasses: ["PRODUCT"],
+              combinesWith: {
+                orderDiscounts: false,
+                productDiscounts: true,
+                shippingDiscounts: false,
+              },
+              metafields: [
+                {
+                  namespace: "$app:category-tier-discount-native",
+                  key: "function-configuration",
+                  type: "json",
+                  value: JSON.stringify(bundleConfig),
+                },
+              ],
+            },
+          },
+        }
+      );
+
+      const bodyText = await result.text();
+      let body: Record<string, unknown> | null = null;
+      try {
+        const parsed = JSON.parse(bodyText) as unknown;
+        body = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+      } catch {
+        body = null;
+      }
+
+      if (!result.ok) {
+        const status = result.status >= 400 && result.status < 500 ? result.status : 502;
+        return json({ ok: false, error: "Admin API HTTP error", status: result.status, body: body ?? bodyText }, { status });
+      }
+
+      const userErrors =
+        (body as { data?: { discountCodeAppCreate?: { userErrors?: unknown[] } } } | null)?.data
+          ?.discountCodeAppCreate?.userErrors ?? [];
+      if (userErrors.length) {
+        return json({ ok: false, userErrors }, { status: 400 });
+      }
+
+      return json({
+        ok: true,
+        code,
+        via,
+        proxyVerified,
+        mode,
+        functionId,
+        bundleConfig,
+      });
+    }
+
     const result = await admin.graphql(
       `
         mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
@@ -144,7 +294,7 @@ async function handle(request: Request) {
       return json({ ok: false, userErrors }, { status: 400 });
     }
 
-    return json({ ok: true, code, via, proxyVerified });
+    return json({ ok: true, code, via, proxyVerified, mode });
   } catch (e: unknown) {
     console.error("[create-discount-live] graphql exception:", e);
     return json({ ok: false, error: "Failed to create discount code.", detail: errorMessage(e) }, { status: 502 });
