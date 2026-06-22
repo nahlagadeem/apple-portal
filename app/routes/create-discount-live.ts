@@ -12,6 +12,13 @@ type GraphqlClient = {
   graphql: (query: string, opts?: { variables?: Record<string, unknown> }) => Promise<Response>;
 };
 
+type CodeDiscountNode = {
+  id: string;
+  title: string;
+  codes: string[];
+  functionId: string;
+};
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
@@ -112,27 +119,6 @@ function buildAppConfigFromSearchParams(searchParams: URLSearchParams) {
   };
 }
 
-function buildBundleAppConfig() {
-  const bundleCollectionId = "gid://shopify/Collection/458566009050";
-  return {
-    ipadPercentage: 0,
-    macPercentage: 0,
-    accessoriesPercentage: 0,
-    iphonePercentage: 0,
-    appleWatchPercentage: 0,
-    tvHomePercentage: 0,
-    airpodsPercentage: 0,
-    rules: [
-      {
-        collectionId: bundleCollectionId,
-        collectionTitle: "All Bundles",
-        percentage: 10,
-      },
-    ],
-    collectionIds: [bundleCollectionId],
-  };
-}
-
 async function resolveDiscountFunctionId(admin: GraphqlClient): Promise<string> {
   const result = await admin.graphql(
     `
@@ -170,6 +156,108 @@ async function resolveDiscountFunctionId(admin: GraphqlClient): Promise<string> 
     throw new Error("No discount function found for student_discount.");
   }
   return functionId;
+}
+
+async function findOwnedCodeDiscounts(admin: GraphqlClient, functionId: string): Promise<CodeDiscountNode[]> {
+  const result = await admin.graphql(
+    `
+      query CodeDiscountNodes($query: String!) {
+        discountNodes(first: 100, query: $query) {
+          nodes {
+            id
+            discount {
+              __typename
+              ... on DiscountCodeApp {
+                title
+                codes(first: 5) {
+                  nodes {
+                    code
+                  }
+                }
+                appDiscountType {
+                  functionId
+                }
+              }
+            }
+          }
+        }
+      }
+    `,
+    { variables: { query: "method:code" } }
+  );
+  const body = await result.json().catch(() => null);
+  const nodes = body?.data?.discountNodes?.nodes ?? [];
+  return nodes
+    .filter(
+      (node: { discount?: { __typename?: string; appDiscountType?: { functionId?: string } } }) =>
+        String(node?.discount?.__typename || "") === "DiscountCodeApp" &&
+        String(node?.discount?.appDiscountType?.functionId || "").trim() === functionId,
+    )
+    .map((node: {
+      id?: string;
+      discount?: { title?: string; appDiscountType?: { functionId?: string }; codes?: { nodes?: { code?: string }[] } };
+    }) => ({
+      id: String(node?.id || "").trim(),
+      title: String(node?.discount?.title || "").trim(),
+      functionId: String(node?.discount?.appDiscountType?.functionId || "").trim(),
+      codes: (node?.discount?.codes?.nodes ?? [])
+        .map((codeNode) => String(codeNode?.code || "").trim())
+        .filter(Boolean),
+    }))
+    .filter((node: CodeDiscountNode) => node.id);
+}
+
+async function updateCodeDiscount(admin: GraphqlClient, discountId: string, config: Record<string, unknown>) {
+  const result = await admin.graphql(
+    `
+      mutation UpdateCodeDiscount($id: ID!, $codeAppDiscount: DiscountCodeAppInput!) {
+        discountCodeAppUpdate(id: $id, codeAppDiscount: $codeAppDiscount) {
+          codeAppDiscount {
+            discountId
+            title
+            codes(first: 1) {
+              nodes {
+                code
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    {
+      variables: {
+        id: discountId,
+        codeAppDiscount: {
+          startsAt: new Date().toISOString(),
+          discountClasses: ["PRODUCT"],
+          combinesWith: {
+            orderDiscounts: false,
+            productDiscounts: true,
+            shippingDiscounts: false,
+          },
+          metafields: [
+            {
+              namespace: "$app:category-tier-discount-native",
+              key: "function-configuration",
+              type: "json",
+              value: JSON.stringify(config),
+            },
+          ],
+        },
+      },
+    }
+  );
+
+  const body = await result.json().catch(() => null);
+  const userErrors = body?.data?.discountCodeAppUpdate?.userErrors ?? [];
+  if (userErrors.length) {
+    return { ok: false, body, userErrors };
+  }
+  return { ok: true, body };
 }
 
 async function handle(request: Request) {
@@ -241,6 +329,29 @@ async function handle(request: Request) {
     if (mode === "app") {
       const functionId = await resolveDiscountFunctionId(admin);
       const bundleConfig = buildAppConfigFromSearchParams(url.searchParams);
+      const ownedCodeDiscounts = await findOwnedCodeDiscounts(admin, functionId);
+      const existingDiscount = ownedCodeDiscounts.find((discount) =>
+        discount.codes.some((existingCode) => existingCode.toUpperCase() === code.toUpperCase()),
+      );
+
+      if (existingDiscount) {
+        const updated = await updateCodeDiscount(admin, existingDiscount.id, bundleConfig);
+        if (!updated.ok) {
+          return json({ ok: false, error: "Failed to update app discount.", details: updated.body }, { status: 400 });
+        }
+        return json({
+          ok: true,
+          code,
+          via,
+          proxyVerified,
+          mode,
+          functionId,
+          bundleConfig,
+          updated: true,
+          discountId: existingDiscount.id,
+        });
+      }
+
       const result = await admin.graphql(
         `
           mutation discountCodeAppCreate($codeAppDiscount: DiscountCodeAppInput!) {
