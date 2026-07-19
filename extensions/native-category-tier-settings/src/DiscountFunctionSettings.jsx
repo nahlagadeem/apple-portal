@@ -92,13 +92,14 @@ function App() {
 
   const onSubmit = async () => {
     const rules = buildRules(collections, rulePercentages);
+    const legacyValues = syncLegacyRulePercentages(values, rulePercentages, collections);
     await applyMetafieldChange({
       type: "updateMetafield",
       namespace: "$app:category-tier-discount-native",
       key: "function-configuration",
       valueType: "json",
       value: JSON.stringify({
-        ...values,
+        ...legacyValues,
         rules,
         collectionIds: rules.map((rule) => rule.collectionId),
       }),
@@ -329,6 +330,19 @@ function buildRules(collections, rulePercentages) {
       percentage: clampPercentage(rulePercentages[collection.id], 0),
     }))
     .filter((rule) => rule.percentage > 0);
+}
+
+function syncLegacyRulePercentages(values, rulePercentages, collections) {
+  const nextValues = {...values};
+  if (!collections.length) return nextValues;
+
+  for (const field of LEGACY_COLLECTION_FIELDS) {
+    if (collections.some((collection) => collection.id === field.collectionId)) {
+      nextValues[field.key] = clampPercentage(rulePercentages[field.collectionId], 0);
+    }
+  }
+
+  return nextValues;
 }
 
 function clampPercentage(value, fallback) {

@@ -110,6 +110,15 @@ function parseConfig(raw) {
   }
 }
 
+function applyLegacyRulePercentages(config, rules) {
+  for (const field of LEGACY_COLLECTION_FIELDS) {
+    const matchingRule = rules.find((rule) => rule.collectionId === field.collectionId);
+    if (matchingRule) {
+      config[field.key] = matchingRule.percentage;
+    }
+  }
+}
+
 function normalizeDiscountNodeId(rawId) {
   if (!rawId) return "";
   const value = String(rawId).trim();
@@ -323,6 +332,7 @@ export const action = async ({ request }) => {
     ),
   };
   const rules = parseRulesInput(formData.get("rules"));
+  applyLegacyRulePercentages(config, rules);
   config.rules = rules;
   config.collectionIds = rules.map((rule) => rule.collectionId);
 
@@ -544,16 +554,32 @@ export default function Index() {
 
   const submitForm = () => {
     const rules = buildRules(collections ?? [], rulePercentages);
+    const legacyPercentages = {
+      ipadPercentage,
+      macPercentage,
+      accessoriesPercentage,
+      iphonePercentage,
+      appleWatchPercentage,
+      tvHomePercentage,
+      airpodsPercentage,
+    };
+
+    if (collections.length) {
+      for (const field of LEGACY_COLLECTION_FIELDS) {
+        legacyPercentages[field.key] = clampPercentage(rulePercentages[field.collectionId], 0);
+      }
+    }
+
     const form = new FormData();
     if (discountNodeId) form.set("discountNodeId", discountNodeId);
     form.set("code", code);
-    form.set("ipadPercentage", String(ipadPercentage));
-    form.set("macPercentage", String(macPercentage));
-    form.set("accessoriesPercentage", String(accessoriesPercentage));
-    form.set("iphonePercentage", String(iphonePercentage));
-    form.set("appleWatchPercentage", String(appleWatchPercentage));
-    form.set("tvHomePercentage", String(tvHomePercentage));
-    form.set("airpodsPercentage", String(airpodsPercentage));
+    form.set("ipadPercentage", String(legacyPercentages.ipadPercentage));
+    form.set("macPercentage", String(legacyPercentages.macPercentage));
+    form.set("accessoriesPercentage", String(legacyPercentages.accessoriesPercentage));
+    form.set("iphonePercentage", String(legacyPercentages.iphonePercentage));
+    form.set("appleWatchPercentage", String(legacyPercentages.appleWatchPercentage));
+    form.set("tvHomePercentage", String(legacyPercentages.tvHomePercentage));
+    form.set("airpodsPercentage", String(legacyPercentages.airpodsPercentage));
     form.set("rules", JSON.stringify(rules));
     fetcher.submit(form, { method: "POST" });
   };

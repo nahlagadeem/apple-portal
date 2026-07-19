@@ -24,3 +24,6 @@ description = "t:description"
   [extensions.input.variables]
   namespace = "$app:category-tier-discount-native"
   key = "function-configuration"
+
+  [extensions.ui]
+  handle = "native-category-tier-settings"
