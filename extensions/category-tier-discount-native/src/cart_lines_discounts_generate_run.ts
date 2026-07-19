@@ -253,10 +253,6 @@ function getParentMerchandise(line: CartLine): BundleMerchandise | null {
   return line.parentRelationship?.parent?.merchandise ?? null;
 }
 
-function getParentLineId(line: CartLine): string | null {
-  return line.parentRelationship?.parent?.id ?? null;
-}
-
 function getCartLineDiscountMatch(
   input: CartInput,
   line: CartLine,

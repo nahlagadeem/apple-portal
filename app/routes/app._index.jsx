@@ -330,21 +330,66 @@ export const action = async ({ request }) => {
     return { ok: false, error: "Please enter a discount code." };
   }
 
-  if (discountNodeId) {
-    return {
-      ok: false,
-      mode: "edit",
-      discountNodeId,
-      code,
-      config,
-      error: "Editing existing discounts is disabled.",
-      userErrors: [],
-    };
-  }
-
   const { functionId, error } = await resolveDiscountFunction(admin);
   if (!functionId) {
     return { ok: false, error };
+  }
+
+  if (discountNodeId) {
+    const updateMutation = `#graphql
+      mutation UpdateCodeDiscount($id: ID!, $codeAppDiscount: DiscountCodeAppInput!) {
+        discountCodeAppUpdate(id: $id, codeAppDiscount: $codeAppDiscount) {
+          codeAppDiscount {
+            discountId
+            title
+            codes(first: 1) {
+              nodes {
+                code
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const updateVariables = {
+      id: discountNodeId,
+      codeAppDiscount: {
+        title: code,
+        startsAt: new Date().toISOString(),
+        discountClasses: ["PRODUCT"],
+        combinesWith: {
+          orderDiscounts: false,
+          productDiscounts: true,
+          shippingDiscounts: false,
+        },
+        metafields: [
+          {
+            namespace: "$app:category-tier-discount-native",
+            key: "function-configuration",
+            type: "json",
+            value: JSON.stringify(config),
+          },
+        ],
+      },
+    };
+
+    const result = await runGraphql(admin, updateMutation, updateVariables);
+    const userErrors = result.json?.data?.discountCodeAppUpdate?.userErrors ?? [];
+    return {
+      ok: result.response.ok && userErrors.length === 0,
+      mode: "edit",
+      functionId,
+      discountNodeId,
+      code,
+      config,
+      result: result.json,
+      userErrors,
+    };
   }
 
   const createMutation = `#graphql
@@ -498,7 +543,6 @@ export default function Index() {
   }, [fetcher.data, shopify, isEdit]);
 
   const submitForm = () => {
-    if (isEdit) return;
     const rules = buildRules(collections ?? [], rulePercentages);
     const form = new FormData();
     if (discountNodeId) form.set("discountNodeId", discountNodeId);
@@ -524,7 +568,7 @@ export default function Index() {
       <s-section heading={isEdit ? "Edit code discount" : "Create code discount in Shopify"}>
         <s-paragraph>
           {isEdit
-            ? "Editing is disabled for existing discounts."
+            ? "Update collection percentages for this discount code."
             : "Enter code and collection percentages before creating."}
         </s-paragraph>
 
@@ -546,7 +590,6 @@ export default function Index() {
                   max={100}
                   suffix="%"
                   value={String(rulePercentages[collection.id] ?? 0)}
-                  disabled={isEdit}
                   onChange={(event) =>
                     setRulePercentages((previous) => ({
                       ...previous,
@@ -567,7 +610,6 @@ export default function Index() {
                 max={100}
                 suffix="%"
                 value={String(ipadPercentage)}
-                disabled={isEdit}
                 onChange={(event) =>
                   setIpadPercentage(clampPercentage(getFieldValue(event), ipadPercentage))
                 }
@@ -578,7 +620,6 @@ export default function Index() {
                 max={100}
                 suffix="%"
                 value={String(macPercentage)}
-                disabled={isEdit}
                 onChange={(event) =>
                   setMacPercentage(clampPercentage(getFieldValue(event), macPercentage))
                 }
@@ -589,7 +630,6 @@ export default function Index() {
                 max={100}
                 suffix="%"
                 value={String(accessoriesPercentage)}
-                disabled={isEdit}
                 onChange={(event) =>
                   setAccessoriesPercentage(
                     clampPercentage(getFieldValue(event), accessoriesPercentage),
@@ -602,7 +642,6 @@ export default function Index() {
                 max={100}
                 suffix="%"
                 value={String(iphonePercentage)}
-                disabled={isEdit}
                 onChange={(event) =>
                   setIphonePercentage(clampPercentage(getFieldValue(event), iphonePercentage))
                 }
@@ -613,7 +652,6 @@ export default function Index() {
                 max={100}
                 suffix="%"
                 value={String(appleWatchPercentage)}
-                disabled={isEdit}
                 onChange={(event) =>
                   setAppleWatchPercentage(
                     clampPercentage(getFieldValue(event), appleWatchPercentage),
@@ -626,7 +664,6 @@ export default function Index() {
                 max={100}
                 suffix="%"
                 value={String(tvHomePercentage)}
-                disabled={isEdit}
                 onChange={(event) =>
                   setTvHomePercentage(clampPercentage(getFieldValue(event), tvHomePercentage))
                 }
@@ -637,7 +674,6 @@ export default function Index() {
                 max={100}
                 suffix="%"
                 value={String(airpodsPercentage)}
-                disabled={isEdit}
                 onChange={(event) =>
                   setAirpodsPercentage(clampPercentage(getFieldValue(event), airpodsPercentage))
                 }
@@ -649,7 +685,6 @@ export default function Index() {
         <s-stack direction="inline" gap="base">
           <s-button
             onClick={submitForm}
-            disabled={isEdit}
             {...(isSubmitting ? { loading: true } : {})}
           >
             {isEdit ? "Save changes" : "Create code discount"}

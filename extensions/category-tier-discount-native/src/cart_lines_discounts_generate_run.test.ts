@@ -7,6 +7,98 @@ const IPAD_COLLECTION_ID = "gid://shopify/Collection/1001";
 const ACCESSORIES_COLLECTION_ID = "gid://shopify/Collection/1002";
 
 describe("cartLinesDiscountsGenerateRun", () => {
+  test("applies the configured category percentages to iPad and Mac cart lines", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/ipad",
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "11-inch iPad Wi-Fi",
+                ipad: true,
+                mac: false,
+                accessories: false,
+                dynamicCollections: [],
+              },
+            },
+          },
+          {
+            id: "gid://shopify/CartLine/mac",
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "13-inch MacBook Air M5-16GB",
+                ipad: false,
+                mac: true,
+                accessories: false,
+                dynamicCollections: [],
+              },
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        discountConfig: {
+          value: JSON.stringify({
+            ipadPercentage: 8,
+            macPercentage: 13,
+            accessoriesPercentage: 5,
+            rules: [],
+            collectionIds: [],
+          }),
+        },
+        automaticConfig: {
+          value: JSON.stringify({ rules: [], collectionIds: [] }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: [
+              {
+                message: "13% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/mac",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 13,
+                  },
+                },
+              },
+              {
+                message: "8% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/ipad",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 8,
+                  },
+                },
+              },
+            ],
+            selectionStrategy: "ALL",
+          },
+        },
+      ],
+    });
+  });
+
   test("applies a dynamic collection rule to a bundle parent product line", () => {
     const input = {
       cart: {
