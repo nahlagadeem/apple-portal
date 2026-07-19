@@ -241,7 +241,7 @@ async function updateCodeDiscount(admin: GraphqlClient, discountId: string, conf
           },
           metafields: [
             {
-              namespace: "$app:category-tier-discount-native",
+              namespace: "default",
               key: "function-configuration",
               type: "json",
               value: JSON.stringify(config),
@@ -387,7 +387,7 @@ async function handle(request: Request) {
               },
               metafields: [
                 {
-                  namespace: "$app:category-tier-discount-native",
+                  namespace: "default",
                   key: "function-configuration",
                   type: "json",
                   value: JSON.stringify(bundleConfig),

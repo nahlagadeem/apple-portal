@@ -12,7 +12,7 @@ module = "./src/DiscountFunctionSettings.jsx"
 target = "admin.discount-details.function-settings.render"
 
 [[extensions.metafields]]
-namespace = "$app:category-tier-discount-native"
+namespace = "default"
 key = "function-configuration"
 
 

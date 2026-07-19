@@ -46,7 +46,7 @@ query CartInput($collectionIds: [ID!] = []) {
   discount {
     discountClasses
     discountConfig: metafield(
-      namespace: "$app:category-tier-discount-native"
+      namespace: "default"
       key: "function-configuration"
     ) {
       value

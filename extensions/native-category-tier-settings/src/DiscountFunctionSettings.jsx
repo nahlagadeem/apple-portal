@@ -95,7 +95,7 @@ function App() {
     const legacyValues = syncLegacyRulePercentages(values, rulePercentages, collections);
     await applyMetafieldChange({
       type: "updateMetafield",
-      namespace: "$app:category-tier-discount-native",
+      namespace: "default",
       key: "function-configuration",
       valueType: "json",
       value: JSON.stringify({

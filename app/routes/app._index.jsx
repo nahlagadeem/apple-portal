@@ -231,6 +231,12 @@ async function fetchExistingDiscount(admin, discountNodeId) {
                 }
               }
               metafield(
+                namespace: "default"
+                key: "function-configuration"
+              ) {
+                value
+              }
+              legacyMetafield: metafield(
                 namespace: "$app:category-tier-discount-native"
                 key: "function-configuration"
               ) {
@@ -248,6 +254,12 @@ async function fetchExistingDiscount(admin, discountNodeId) {
             }
           }
           metafield(
+            namespace: "default"
+            key: "function-configuration"
+          ) {
+            value
+          }
+          legacyMetafield: metafield(
             namespace: "$app:category-tier-discount-native"
             key: "function-configuration"
           ) {
@@ -280,7 +292,7 @@ async function fetchExistingDiscount(admin, discountNodeId) {
   return {
     discountNodeId: effectiveNodeId,
     code,
-    config: parseConfig(discount.metafield?.value),
+    config: parseConfig(discount.metafield?.value || discount.legacyMetafield?.value),
   };
 }
 
@@ -379,7 +391,7 @@ export const action = async ({ request }) => {
         },
         metafields: [
           {
-            namespace: "$app:category-tier-discount-native",
+            namespace: "default",
             key: "function-configuration",
             type: "json",
             value: JSON.stringify(config),
@@ -436,7 +448,7 @@ export const action = async ({ request }) => {
       },
       metafields: [
         {
-          namespace: "$app:category-tier-discount-native",
+          namespace: "default",
           key: "function-configuration",
           type: "json",
           value: JSON.stringify(config),
