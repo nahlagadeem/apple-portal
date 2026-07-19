@@ -622,6 +622,185 @@ describe("cartLinesDiscountsGenerateRun", () => {
     });
   });
 
+  test("uses the bundle percentage before component category percentages for bundle children", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/component-ipad",
+            parentRelationship: {
+              parent: {
+                id: "gid://shopify/CartLine/bundle-parent",
+                merchandise: {
+                  __typename: "ProductVariant",
+                  product: {
+                    title: "Primary Years Learning Bundle",
+                    dynamicCollections: [
+                      {
+                        collectionId: BUNDLES_COLLECTION_ID,
+                        isMember: true,
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "11-inch iPad Wi-Fi",
+                ipad: true,
+                mac: false,
+                accessories: false,
+                dynamicCollections: [
+                  {
+                    collectionId: IPAD_COLLECTION_ID,
+                    isMember: true,
+                  },
+                  {
+                    collectionId: BUNDLES_COLLECTION_ID,
+                    isMember: false,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        discountConfig: {
+          value: JSON.stringify({
+            rules: [
+              {
+                collectionId: BUNDLES_COLLECTION_ID,
+                collectionTitle: "All Bundles",
+                percentage: 12,
+              },
+              {
+                collectionId: IPAD_COLLECTION_ID,
+                collectionTitle: "iPad",
+                percentage: 7,
+              },
+            ],
+            collectionIds: [BUNDLES_COLLECTION_ID, IPAD_COLLECTION_ID],
+          }),
+        },
+        automaticConfig: {
+          value: JSON.stringify({ rules: [], collectionIds: [] }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: [
+              {
+                message: "12% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/component-ipad",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 12,
+                  },
+                },
+              },
+            ],
+            selectionStrategy: "ALL",
+          },
+        },
+      ],
+    });
+  });
+
+  test("keeps mixed bundle codes applicable when Shopify exposes only expanded bundle components", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/component-1",
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "Bundle Component",
+                ipad: false,
+                mac: false,
+                accessories: false,
+                dynamicCollections: [
+                  {
+                    collectionId: BUNDLES_COLLECTION_ID,
+                    isMember: false,
+                  },
+                  {
+                    collectionId: IPAD_COLLECTION_ID,
+                    isMember: false,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        discountConfig: {
+          value: JSON.stringify({
+            rules: [
+              {
+                collectionId: BUNDLES_COLLECTION_ID,
+                collectionTitle: "All Bundles",
+                percentage: 12,
+              },
+              {
+                collectionId: IPAD_COLLECTION_ID,
+                collectionTitle: "iPad",
+                percentage: 7,
+              },
+            ],
+            collectionIds: [BUNDLES_COLLECTION_ID, IPAD_COLLECTION_ID],
+          }),
+        },
+        automaticConfig: {
+          value: JSON.stringify({ rules: [], collectionIds: [] }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: [
+              {
+                message: "12% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/component-1",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 12,
+                  },
+                },
+              },
+            ],
+            selectionStrategy: "ALL",
+          },
+        },
+      ],
+    });
+  });
+
   test("applies a bundle-only rule when Shopify exposes only expanded component lines", () => {
     const input = {
       cart: {
@@ -717,7 +896,7 @@ describe("cartLinesDiscountsGenerateRun", () => {
     });
   });
 
-  test("does not apply the bundle-only failsafe when another positive rule is configured", () => {
+  test("applies the bundle fallback when mixed rules otherwise produce no candidates", () => {
     const input = {
       cart: {
         lines: [
@@ -770,7 +949,32 @@ describe("cartLinesDiscountsGenerateRun", () => {
       },
     } as CartInput;
 
-    expect(cartLinesDiscountsGenerateRun(input)).toEqual({ operations: [] });
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: [
+              {
+                message: "10% category discount",
+                targets: [
+                  {
+                    cartLine: {
+                      id: "gid://shopify/CartLine/component-1",
+                    },
+                  },
+                ],
+                value: {
+                  percentage: {
+                    value: 10,
+                  },
+                },
+              },
+            ],
+            selectionStrategy: "ALL",
+          },
+        },
+      ],
+    });
   });
 
   test("applies a bundle-only rule even when automatic exclusions match component categories", () => {

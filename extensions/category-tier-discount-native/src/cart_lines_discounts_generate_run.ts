@@ -195,6 +195,15 @@ function getBundleRulePercentage(input: CartInput, config: RuleConfig): number {
   }, 0);
 }
 
+function getNonBundleRuleCount(input: CartInput, config: RuleConfig): number {
+  const rules = readRuleConfig(input, config);
+
+  return rules.filter((rule) => {
+    const title = String(rule.collectionTitle || "").toLowerCase();
+    return !title.includes("bundle");
+  }).length;
+}
+
 function getBundleOnlyRulePercentage(input: CartInput, config: RuleConfig): number {
   const rules = readRuleConfig(input, config);
   if (!rules.length) return 0;
@@ -324,11 +333,13 @@ export function cartLinesDiscountsGenerateRun(
   const automaticConfig = readAutomaticConfig(input.discount.automaticConfig?.value);
   const productLineIdsByPercent: Record<number, Set<string>> = {};
   const codeEligibleLineIds = new Set<string>();
+  const bundleRulePercentage = getBundleRulePercentage(input, codeConfig);
   const bundleOnlyPercentage = getBundleOnlyRulePercentage(input, codeConfig);
+  const hasMixedBundleRules = bundleRulePercentage > 0 && getNonBundleRuleCount(input, codeConfig) > 0;
   const resolvedPercentageByTargetLineId: Record<string, number> = {};
 
   for (const line of input.cart.lines) {
-    if (bundleOnlyPercentage > 0) {
+    if (bundleRulePercentage > 0) {
       codeEligibleLineIds.add(line.id);
     }
 
@@ -340,8 +351,8 @@ export function cartLinesDiscountsGenerateRun(
     }
 
     const match =
-      getCartLineDiscountMatch(input, line, codeConfig) ||
-      getBundleFallbackDiscountMatch(input, line, codeConfig);
+      getBundleFallbackDiscountMatch(input, line, codeConfig) ||
+      getCartLineDiscountMatch(input, line, codeConfig);
 
     if (!match) continue;
     const existingPercentage = resolvedPercentageByTargetLineId[match.targetLineId] ?? 0;
@@ -360,10 +371,10 @@ export function cartLinesDiscountsGenerateRun(
 
   if (
     !Object.keys(productLineIdsByPercent).length &&
-    bundleOnlyPercentage > 0 &&
+    (bundleOnlyPercentage > 0 || hasMixedBundleRules) &&
     codeEligibleLineIds.size > 0
   ) {
-    productLineIdsByPercent[bundleOnlyPercentage] = codeEligibleLineIds;
+    productLineIdsByPercent[bundleOnlyPercentage || bundleRulePercentage] = codeEligibleLineIds;
   }
 
   const candidates = Object.entries(productLineIdsByPercent)
