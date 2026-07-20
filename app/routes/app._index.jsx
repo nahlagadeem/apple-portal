@@ -138,38 +138,6 @@ function buildNativeDiscountUrl() {
   return `https://admin.shopify.com/store/${NATIVE_DISCOUNT_STORE_HANDLE}/discounts`;
 }
 
-function redirectDocument(url) {
-  const safeUrl = JSON.stringify(url);
-  return new Response(
-    `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <meta http-equiv="refresh" content="0;url=${url}">
-    <title>Opening Shopify discount page</title>
-  </head>
-  <body>
-    <script>
-      const targetUrl = ${safeUrl};
-      window.open(targetUrl, "_top");
-      try {
-        window.top.location.href = targetUrl;
-      } catch {
-        window.location.href = targetUrl;
-      }
-    </script>
-    <a href="${url}" target="_top">Open Shopify discount page</a>
-  </body>
-</html>`,
-    {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-store",
-      },
-    },
-  );
-}
-
 async function runGraphql(admin, query, variables = {}) {
   const response = await admin.graphql(query, { variables });
   const json = await response.json();
@@ -354,20 +322,21 @@ export const loader = async ({ request }) => {
   );
 
   if (!discountNodeId) {
-    const nativeDiscountPath = buildNativeDiscountPath();
-    if (nativeDiscountPath && redirect) {
-      try {
-        return redirect(nativeDiscountPath, { target: "_top" });
-      } catch {
-        return redirectDocument(buildNativeDiscountUrl());
-      }
+    const discountsUrl = buildNativeDiscountUrl();
+    if (redirect) {
+      return redirect(buildNativeDiscountPath(), { target: "_top" });
     }
-    return redirectDocument(buildNativeDiscountUrl());
+    return {
+      existing: null,
+      collections: [],
+      unavailable: false,
+      discountsUrl,
+    };
   }
 
   const existing = await fetchExistingDiscount(admin, discountNodeId);
   const collections = await fetchCollections(admin);
-  return { existing, collections, unavailable: false, nativeDiscountUrl: "" };
+  return { existing, collections, unavailable: false, discountsUrl: buildNativeDiscountUrl() };
 };
 
 export const action = async ({ request }) => {
@@ -574,6 +543,7 @@ export default function Index() {
     existing = null,
     collections: loaderCollections = [],
     unavailable = false,
+    discountsUrl = buildNativeDiscountUrl(),
   } = loaderData;
   const collections = Array.isArray(loaderCollections)
     ? loaderCollections.filter((collection) => collection?.id)
@@ -654,6 +624,19 @@ export default function Index() {
     form.set("rules", JSON.stringify(rules));
     fetcher.submit(form, { method: "POST" });
   };
+
+  if (!isEdit) {
+    return (
+      <s-page heading="Combined Student Discount Manager">
+        <s-section heading="Create discounts in Shopify">
+          <s-paragraph>
+            Create the code from the Shopify Discounts page, then choose Combined Student Discount.
+          </s-paragraph>
+          <s-link href={discountsUrl} target="_top">Open Shopify Discounts</s-link>
+        </s-section>
+      </s-page>
+    );
+  }
 
   return (
     <s-page heading="Combined Student Discount Manager">
