@@ -107,7 +107,6 @@ describe("cartLinesDiscountsGenerateRun", () => {
             id: "gid://shopify/CartLine/component-1",
             parentRelationship: {
               parent: {
-                id: "gid://shopify/CartLine/bundle-parent",
                 merchandise: {
                   __typename: "ProductVariant",
                   product: {
@@ -196,7 +195,6 @@ describe("cartLinesDiscountsGenerateRun", () => {
             id: "gid://shopify/CartLine/component-1",
             parentRelationship: {
               parent: {
-                id: "gid://shopify/CartLine/bundle-parent",
                 merchandise: {
                   __typename: "ProductVariant",
                   product: {
@@ -285,7 +283,6 @@ describe("cartLinesDiscountsGenerateRun", () => {
             id: "gid://shopify/CartLine/component-1",
             parentRelationship: {
               parent: {
-                id: "gid://shopify/CartLine/bundle-parent",
                 merchandise: {
                   __typename: "ProductVariant",
                   product: {
@@ -519,7 +516,6 @@ describe("cartLinesDiscountsGenerateRun", () => {
             id: "gid://shopify/CartLine/component-ipad",
             parentRelationship: {
               parent: {
-                id: "gid://shopify/CartLine/bundle-parent",
                 merchandise: {
                   __typename: "ProductVariant",
                   product: {
@@ -554,7 +550,6 @@ describe("cartLinesDiscountsGenerateRun", () => {
             id: "gid://shopify/CartLine/component-case",
             parentRelationship: {
               parent: {
-                id: "gid://shopify/CartLine/bundle-parent",
                 merchandise: {
                   __typename: "ProductVariant",
                   product: {
@@ -589,7 +584,6 @@ describe("cartLinesDiscountsGenerateRun", () => {
             id: "gid://shopify/CartLine/component-screen",
             parentRelationship: {
               parent: {
-                id: "gid://shopify/CartLine/bundle-parent",
                 merchandise: {
                   __typename: "ProductVariant",
                   product: {
@@ -703,7 +697,6 @@ describe("cartLinesDiscountsGenerateRun", () => {
             id: "gid://shopify/CartLine/component-ipad",
             parentRelationship: {
               parent: {
-                id: "gid://shopify/CartLine/bundle-parent",
                 merchandise: {
                   __typename: "ProductVariant",
                   product: {
