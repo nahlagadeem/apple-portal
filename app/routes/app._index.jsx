@@ -128,28 +128,9 @@ function normalizeDiscountNodeId(rawId) {
   return value;
 }
 
-function normalizeShopDomain(input) {
-  const value = String(input || "").trim().toLowerCase();
-  if (!value) return "";
-  try {
-    const withProtocol = value.startsWith("http://") || value.startsWith("https://") ? value : `https://${value}`;
-    return new URL(withProtocol).hostname.trim().toLowerCase();
-  } catch {
-    return value.replace(/^https?:\/\//, "").split("/")[0].trim().toLowerCase();
-  }
-}
-
-function getAdminStoreHandle(shopDomain) {
-  const domain = normalizeShopDomain(shopDomain);
-  if (!domain) return "";
-  return domain.replace(/\.myshopify\.com$/, "").split(".")[0];
-}
-
-function buildNativeDiscountUrl(shopDomain, functionId) {
-  const storeHandle = getAdminStoreHandle(shopDomain);
-  if (!storeHandle || !functionId) return "";
-
-  const url = new URL(`https://admin.shopify.com/store/${storeHandle}/discounts/new/app`);
+function buildNativeDiscountPath(functionId) {
+  if (!functionId) return "";
+  const url = new URL("shopify://admin/discounts/new/app");
   url.searchParams.set("functionId", functionId);
   return url.toString();
 }
@@ -324,9 +305,9 @@ async function fetchExistingDiscount(admin, discountNodeId) {
 
 export const loader = async ({ request }) => {
   let admin = null;
-  let session = null;
+  let redirect = null;
   try {
-    ({ admin, session } = await authenticate.admin(request));
+    ({ admin, redirect } = await authenticate.admin(request));
   } catch {
     return { existing: null, collections: [], unavailable: true, nativeDiscountUrl: "" };
   }
@@ -339,15 +320,11 @@ export const loader = async ({ request }) => {
 
   if (!discountNodeId) {
     const { functionId } = await resolveDiscountFunction(admin);
-    return {
-      existing: null,
-      collections: [],
-      unavailable: false,
-      nativeDiscountUrl: buildNativeDiscountUrl(
-        session?.shop || url.searchParams.get("shop"),
-        functionId,
-      ),
-    };
+    const nativeDiscountPath = buildNativeDiscountPath(functionId);
+    if (nativeDiscountPath && redirect) {
+      return redirect(nativeDiscountPath, { target: "_parent" });
+    }
+    return { existing: null, collections: [], unavailable: false, nativeDiscountUrl: "" };
   }
 
   const existing = await fetchExistingDiscount(admin, discountNodeId);
@@ -559,7 +536,6 @@ export default function Index() {
     existing = null,
     collections: loaderCollections = [],
     unavailable = false,
-    nativeDiscountUrl = "",
   } = loaderData;
   const collections = Array.isArray(loaderCollections)
     ? loaderCollections.filter((collection) => collection?.id)
@@ -601,15 +577,6 @@ export default function Index() {
     fetcher.formMethod === "POST";
 
   useEffect(() => {
-    if (!nativeDiscountUrl || isEdit) return;
-    try {
-      window.top.location.assign(nativeDiscountUrl);
-    } catch {
-      window.location.assign(nativeDiscountUrl);
-    }
-  }, [nativeDiscountUrl, isEdit]);
-
-  useEffect(() => {
     if (!fetcher.data) return;
     if (fetcher.data?.ok) {
       shopify.toast.show(isEdit ? "Discount updated" : "Discount code created");
@@ -649,17 +616,6 @@ export default function Index() {
     form.set("rules", JSON.stringify(rules));
     fetcher.submit(form, { method: "POST" });
   };
-
-  if (nativeDiscountUrl && !isEdit) {
-    return (
-      <s-page heading="Combined Student Discount Manager">
-        <s-section heading="Opening Shopify discount page">
-          <s-paragraph>Opening the native Shopify discount page.</s-paragraph>
-          <s-link href={nativeDiscountUrl}>Open discount page</s-link>
-        </s-section>
-      </s-page>
-    );
-  }
 
   return (
     <s-page heading="Combined Student Discount Manager">
