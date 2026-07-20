@@ -14,7 +14,6 @@ const DEFAULT_CONFIG = {
   airpodsPercentage: 0,
 };
 
-const NATIVE_DISCOUNT_FUNCTION_ID = "019c8f26-f02f-7977-a82f-641fb7b8166d";
 const NATIVE_DISCOUNT_STORE_HANDLE = "7shdka-4d";
 
 const LEGACY_COLLECTION_FIELDS = [
@@ -131,20 +130,12 @@ function normalizeDiscountNodeId(rawId) {
   return value;
 }
 
-function buildNativeDiscountPath(functionId) {
-  if (!functionId) return "";
-  const url = new URL("shopify://admin/discounts/new/app");
-  url.searchParams.set("functionId", functionId);
-  return url.toString();
+function buildNativeDiscountPath() {
+  return "shopify://admin/discounts";
 }
 
-function buildNativeDiscountUrl(functionId) {
-  if (!functionId) return "";
-  const url = new URL(
-    `https://admin.shopify.com/store/${NATIVE_DISCOUNT_STORE_HANDLE}/discounts/new/app`,
-  );
-  url.searchParams.set("functionId", functionId);
-  return url.toString();
+function buildNativeDiscountUrl() {
+  return `https://admin.shopify.com/store/${NATIVE_DISCOUNT_STORE_HANDLE}/discounts`;
 }
 
 function redirectDocument(url) {
@@ -363,17 +354,15 @@ export const loader = async ({ request }) => {
   );
 
   if (!discountNodeId) {
-    const { functionId } = await resolveDiscountFunction(admin);
-    const resolvedFunctionId = functionId || NATIVE_DISCOUNT_FUNCTION_ID;
-    const nativeDiscountPath = buildNativeDiscountPath(resolvedFunctionId);
+    const nativeDiscountPath = buildNativeDiscountPath();
     if (nativeDiscountPath && redirect) {
       try {
         return redirect(nativeDiscountPath, { target: "_top" });
       } catch {
-        return redirectDocument(buildNativeDiscountUrl(resolvedFunctionId));
+        return redirectDocument(buildNativeDiscountUrl());
       }
     }
-    return redirectDocument(buildNativeDiscountUrl(resolvedFunctionId));
+    return redirectDocument(buildNativeDiscountUrl());
   }
 
   const existing = await fetchExistingDiscount(admin, discountNodeId);
