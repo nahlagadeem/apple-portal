@@ -44,7 +44,6 @@ query CartInput($collectionIds: [ID!] = []) {
     }
   }
   discount {
-    discountClasses
     discountConfig: metafield(
       namespace: "default"
       key: "function-configuration"

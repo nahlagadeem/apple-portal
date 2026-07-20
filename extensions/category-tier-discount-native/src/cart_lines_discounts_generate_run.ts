@@ -321,14 +321,6 @@ export function cartLinesDiscountsGenerateRun(
     return {operations: []};
   }
 
-  const discountClasses =
-    (input.discount as CartInput["discount"] & {discountClasses?: string[]}).discountClasses ?? [];
-  const hasProductDiscountClass = discountClasses.includes("PRODUCT");
-
-  if (!hasProductDiscountClass) {
-    return {operations: []};
-  }
-
   const codeConfig = parseConfig(
     input.discount.discountConfig?.value || input.discount.legacyDiscountConfig?.value,
   );
