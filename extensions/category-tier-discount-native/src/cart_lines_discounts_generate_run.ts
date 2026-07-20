@@ -329,7 +329,9 @@ export function cartLinesDiscountsGenerateRun(
     return {operations: []};
   }
 
-  const codeConfig = parseConfig(input.discount.discountConfig?.value);
+  const codeConfig = parseConfig(
+    input.discount.discountConfig?.value || input.discount.legacyDiscountConfig?.value,
+  );
   const automaticConfig = readAutomaticConfig(input.discount.automaticConfig?.value);
   const productLineIdsByPercent: Record<number, Set<string>> = {};
   const codeEligibleLineIds = new Set<string>();

@@ -51,6 +51,12 @@ query CartInput($collectionIds: [ID!] = []) {
     ) {
       value
     }
+    legacyDiscountConfig: metafield(
+      namespace: "$app:category-tier-discount-native"
+      key: "function-configuration"
+    ) {
+      value
+    }
     automaticConfig: metafield(
       namespace: "student-discount-shared"
       key: "automatic-configuration"
