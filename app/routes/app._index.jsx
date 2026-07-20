@@ -14,6 +14,9 @@ const DEFAULT_CONFIG = {
   airpodsPercentage: 0,
 };
 
+const NATIVE_DISCOUNT_FUNCTION_ID = "019c8f26-f02f-7977-a82f-641fb7b8166d";
+const NATIVE_DISCOUNT_STORE_HANDLE = "7shdka-4d";
+
 const LEGACY_COLLECTION_FIELDS = [
   {
     key: "ipadPercentage",
@@ -133,6 +136,47 @@ function buildNativeDiscountPath(functionId) {
   const url = new URL("shopify://admin/discounts/new/app");
   url.searchParams.set("functionId", functionId);
   return url.toString();
+}
+
+function buildNativeDiscountUrl(functionId) {
+  if (!functionId) return "";
+  const url = new URL(
+    `https://admin.shopify.com/store/${NATIVE_DISCOUNT_STORE_HANDLE}/discounts/new/app`,
+  );
+  url.searchParams.set("functionId", functionId);
+  return url.toString();
+}
+
+function redirectDocument(url) {
+  const safeUrl = JSON.stringify(url);
+  return new Response(
+    `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="0;url=${url}">
+    <title>Opening Shopify discount page</title>
+  </head>
+  <body>
+    <script>
+      const targetUrl = ${safeUrl};
+      window.open(targetUrl, "_top");
+      try {
+        window.top.location.href = targetUrl;
+      } catch {
+        window.location.href = targetUrl;
+      }
+    </script>
+    <a href="${url}" target="_top">Open Shopify discount page</a>
+  </body>
+</html>`,
+    {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    },
+  );
 }
 
 async function runGraphql(admin, query, variables = {}) {
@@ -320,11 +364,16 @@ export const loader = async ({ request }) => {
 
   if (!discountNodeId) {
     const { functionId } = await resolveDiscountFunction(admin);
-    const nativeDiscountPath = buildNativeDiscountPath(functionId);
+    const resolvedFunctionId = functionId || NATIVE_DISCOUNT_FUNCTION_ID;
+    const nativeDiscountPath = buildNativeDiscountPath(resolvedFunctionId);
     if (nativeDiscountPath && redirect) {
-      return redirect(nativeDiscountPath, { target: "_parent" });
+      try {
+        return redirect(nativeDiscountPath, { target: "_top" });
+      } catch {
+        return redirectDocument(buildNativeDiscountUrl(resolvedFunctionId));
+      }
     }
-    return { existing: null, collections: [], unavailable: false, nativeDiscountUrl: "" };
+    return redirectDocument(buildNativeDiscountUrl(resolvedFunctionId));
   }
 
   const existing = await fetchExistingDiscount(admin, discountNodeId);
