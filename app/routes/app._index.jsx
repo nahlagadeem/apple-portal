@@ -128,6 +128,32 @@ function normalizeDiscountNodeId(rawId) {
   return value;
 }
 
+function normalizeShopDomain(input) {
+  const value = String(input || "").trim().toLowerCase();
+  if (!value) return "";
+  try {
+    const withProtocol = value.startsWith("http://") || value.startsWith("https://") ? value : `https://${value}`;
+    return new URL(withProtocol).hostname.trim().toLowerCase();
+  } catch {
+    return value.replace(/^https?:\/\//, "").split("/")[0].trim().toLowerCase();
+  }
+}
+
+function getAdminStoreHandle(shopDomain) {
+  const domain = normalizeShopDomain(shopDomain);
+  if (!domain) return "";
+  return domain.replace(/\.myshopify\.com$/, "").split(".")[0];
+}
+
+function buildNativeDiscountUrl(shopDomain, functionId) {
+  const storeHandle = getAdminStoreHandle(shopDomain);
+  if (!storeHandle || !functionId) return "";
+
+  const url = new URL(`https://admin.shopify.com/store/${storeHandle}/discounts/new/app`);
+  url.searchParams.set("functionId", functionId);
+  return url.toString();
+}
+
 async function runGraphql(admin, query, variables = {}) {
   const response = await admin.graphql(query, { variables });
   const json = await response.json();
@@ -298,10 +324,11 @@ async function fetchExistingDiscount(admin, discountNodeId) {
 
 export const loader = async ({ request }) => {
   let admin = null;
+  let session = null;
   try {
-    ({ admin } = await authenticate.admin(request));
+    ({ admin, session } = await authenticate.admin(request));
   } catch {
-    return { existing: null, collections: [], unavailable: true };
+    return { existing: null, collections: [], unavailable: true, nativeDiscountUrl: "" };
   }
   const url = new URL(request.url);
   const discountNodeId = normalizeDiscountNodeId(
@@ -310,9 +337,22 @@ export const loader = async ({ request }) => {
       url.searchParams.get("discountNodeId"),
   );
 
+  if (!discountNodeId) {
+    const { functionId } = await resolveDiscountFunction(admin);
+    return {
+      existing: null,
+      collections: [],
+      unavailable: false,
+      nativeDiscountUrl: buildNativeDiscountUrl(
+        session?.shop || url.searchParams.get("shop"),
+        functionId,
+      ),
+    };
+  }
+
   const existing = await fetchExistingDiscount(admin, discountNodeId);
   const collections = await fetchCollections(admin);
-  return { existing, collections, unavailable: false };
+  return { existing, collections, unavailable: false, nativeDiscountUrl: "" };
 };
 
 export const action = async ({ request }) => {
@@ -515,7 +555,12 @@ function getFieldValue(event) {
 
 export default function Index() {
   const loaderData = useLoaderData() || {};
-  const { existing = null, collections: loaderCollections = [], unavailable = false } = loaderData;
+  const {
+    existing = null,
+    collections: loaderCollections = [],
+    unavailable = false,
+    nativeDiscountUrl = "",
+  } = loaderData;
   const collections = Array.isArray(loaderCollections)
     ? loaderCollections.filter((collection) => collection?.id)
     : [];
@@ -554,6 +599,15 @@ export default function Index() {
   const isSubmitting =
     ["loading", "submitting"].includes(fetcher.state) &&
     fetcher.formMethod === "POST";
+
+  useEffect(() => {
+    if (!nativeDiscountUrl || isEdit) return;
+    try {
+      window.top.location.assign(nativeDiscountUrl);
+    } catch {
+      window.location.assign(nativeDiscountUrl);
+    }
+  }, [nativeDiscountUrl, isEdit]);
 
   useEffect(() => {
     if (!fetcher.data) return;
@@ -595,6 +649,17 @@ export default function Index() {
     form.set("rules", JSON.stringify(rules));
     fetcher.submit(form, { method: "POST" });
   };
+
+  if (nativeDiscountUrl && !isEdit) {
+    return (
+      <s-page heading="Combined Student Discount Manager">
+        <s-section heading="Opening Shopify discount page">
+          <s-paragraph>Opening the native Shopify discount page.</s-paragraph>
+          <s-link href={nativeDiscountUrl}>Open discount page</s-link>
+        </s-section>
+      </s-page>
+    );
+  }
 
   return (
     <s-page heading="Combined Student Discount Manager">
