@@ -7,6 +7,69 @@ const IPAD_COLLECTION_ID = "gid://shopify/Collection/1001";
 const ACCESSORIES_COLLECTION_ID = "gid://shopify/Collection/1002";
 
 describe("cartLinesDiscountsGenerateRun", () => {
+  test("does not apply legacy default percentages when code config is missing", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/mac",
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "13-inch MacBook Air",
+                ipad: false,
+                mac: true,
+                accessories: false,
+                dynamicCollections: [],
+              },
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        automaticConfig: {
+          value: JSON.stringify({ rules: [], collectionIds: [] }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({operations: []});
+  });
+
+  test("does not apply legacy default percentages when code config is malformed", () => {
+    const input = {
+      cart: {
+        lines: [
+          {
+            id: "gid://shopify/CartLine/mac",
+            merchandise: {
+              __typename: "ProductVariant",
+              product: {
+                title: "13-inch MacBook Air",
+                ipad: false,
+                mac: true,
+                accessories: false,
+                dynamicCollections: [],
+              },
+            },
+          },
+        ],
+      },
+      discount: {
+        discountClasses: [DiscountClass.Product],
+        discountConfig: {
+          value: "{not-json",
+        },
+        automaticConfig: {
+          value: JSON.stringify({ rules: [], collectionIds: [] }),
+        },
+      },
+    } as CartInput;
+
+    expect(cartLinesDiscountsGenerateRun(input)).toEqual({operations: []});
+  });
+
   test("applies the configured category percentages to iPad and Mac cart lines", () => {
     const input = {
       cart: {
